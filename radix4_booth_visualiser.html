@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Radix-4 Booth Multiplier</title>
+<style>
+:root{
+  --sans:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --bg:#eef1f5; --panel:#fff; --ink:#141b26; --muted:#5d6878; --line:#d6dce5; --soft:#f4f6f9;
+  --accent:#2747d0; --accent-soft:#e3e9ff;
+  --add:#13784b; --add-soft:#daf3e6; --sub:#c0420d; --sub-soft:#fde5d9;
+  --chg:#ffe27a; --chg-ink:#2b2100; --wire:#a3adbb;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0f141c; --panel:#171e29; --ink:#e6ebf3; --muted:#9ba6b7; --line:#2b3546; --soft:#1d2533;
+    --accent:#86a0ff; --accent-soft:#24305a;
+    --add:#55c993; --add-soft:#163a2b; --sub:#ff9c6e; --sub-soft:#46261a;
+    --chg:#8a6d00; --chg-ink:#fff6d6; --wire:#556175;
+  }
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 var(--sans)}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.app{height:100vh;min-height:600px;display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:10px;padding:10px 14px;max-width:1500px;margin:0 auto}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px;min-width:0}
+h1{font-size:18px;margin:0;white-space:nowrap}
+h2{font-size:14px;margin:0 0 6px}
+
+/* top bar */
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px}
+.inputs{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.inputs label{display:flex;align-items:center;gap:6px;font-weight:600}
+.inputs input{width:135px;padding:5px 8px;border:1.5px solid var(--line);border-radius:7px;background:var(--panel);font-family:var(--mono)}
+.inputs input[aria-invalid="true"]{border-color:var(--sub)}
+.inputs select{padding:5px 6px;border:1.5px solid var(--line);border-radius:7px;background:var(--panel)}
+.err{color:var(--sub);font-size:12.5px}
+.btns{display:flex;gap:6px}
+.btn{border:1.5px solid var(--line);background:var(--soft);border-radius:7px;padding:5px 14px;font-weight:600;cursor:pointer}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn:disabled{opacity:.4;cursor:default}
+.status{display:flex;gap:8px;margin-left:auto;align-items:center}
+.pill{border-radius:999px;padding:3px 12px;font-weight:700;background:var(--soft);border:1px solid var(--line);white-space:nowrap}
+.pill.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+
+/* middle row */
+.mid{display:grid;grid-template-columns:240px minmax(0,1.25fr) minmax(330px,1fr);gap:10px;min-height:0}
+table{border-collapse:collapse;width:100%}
+th,td{padding:3px 8px;text-align:left;border-bottom:1px solid var(--line)}
+th{font-size:12.5px;color:var(--muted);font-weight:600}
+.mono{font-family:var(--mono)}
+#booth td{padding:4px 8px}
+#booth tr.on td{background:var(--accent-soft);font-weight:700}
+#booth tr.on td:first-child{box-shadow:inset 4px 0 0 var(--accent)}
+.add{color:var(--add)} .sub{color:var(--sub)} .none{color:var(--muted)}
+
+/* datapath */
+.dp{display:flex;flex-direction:column;min-height:0}
+.dp svg{flex:1 1 auto;min-height:0;width:100%;height:100%}
+.dp .box{fill:var(--panel);stroke:var(--wire);stroke-width:1.5}
+.dp .box.on{fill:var(--accent-soft);stroke:var(--accent);stroke-width:2}
+.dp .box.on.add{fill:var(--add-soft);stroke:var(--add)}
+.dp .box.on.sub{fill:var(--sub-soft);stroke:var(--sub)}
+.dp .w{fill:none;stroke:var(--wire);stroke-width:2;marker-end:url(#a0)}
+.dp .w.on{stroke:var(--accent);stroke-width:2.6;marker-end:url(#a1)}
+.dp .w.on.add{stroke:var(--add);marker-end:url(#a2)}
+.dp .w.on.sub{stroke:var(--sub);marker-end:url(#a3)}
+.dp .t{font:700 13px var(--sans);fill:var(--ink)}
+.dp .s{font:11.5px var(--sans);fill:var(--muted)}
+.dp .v{font:600 13px var(--mono);fill:var(--ink)}
+#vQ{font-weight:400}
+.dp .v .hi{font-weight:800}
+.dp .lbl{font:11px var(--sans);fill:var(--muted)}
+
+/* this cycle */
+.now .head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.big{font-size:15px;font-weight:700;margin:2px 0 8px}
+.sum{display:grid;grid-template-columns:auto auto auto;gap:1px 12px;justify-content:start;align-items:baseline;overflow-x:auto}
+.sum .k{color:var(--muted);white-space:nowrap}
+.sum .d{font-family:var(--mono);text-align:right}
+.sum.w16{font-size:12px}
+.sum.w32{grid-template-columns:minmax(0,1fr);font-size:9.5px;gap:0}
+.sum.w32 .bits .g,.w32 #trace .bits .g{width:3px}
+.sum.w32 .k{display:flex;justify-content:space-between;gap:12px;margin-top:4px;font-size:12.5px}
+.sum.w32 .rule{grid-column:1}
+.w32 #trace th,.w32 #trace td{font-size:10px;padding:2px 5px}
+.w32 #trace th:nth-child(3),.w32 #trace td:nth-child(3){display:none}
+.w32 #trace td .bits{font-size:9.5px;letter-spacing:0}
+.w32 #trace td.dec{font-size:10px}
+.w32 .dp .v{font-size:10px}
+.sum .rule{grid-column:1/4;border-top:2px solid var(--ink);margin:2px 0}
+.note{color:var(--muted);margin:8px 0 0;font-size:13px}
+.ok{color:var(--add);font-weight:700}
+.bits{font-family:var(--mono);letter-spacing:.3px;white-space:nowrap}
+.bits .g{display:inline-block;width:5px}
+.blk3{font-weight:800}
+
+/* trace */
+.trace .head{display:flex;flex-wrap:wrap;gap:4px 16px;align-items:baseline;margin-bottom:2px}
+.trace .head h2{margin:0}
+.trace .head p{margin:0;color:var(--muted);font-size:12.5px}
+.tscroll{overflow:auto;max-height:42vh}
+#trace th,#trace td{padding:2px 10px;white-space:nowrap;font-size:13px}
+#trace thead th{position:sticky;top:0;background:var(--panel);z-index:1}
+#trace td.dec{color:var(--muted);font-family:var(--mono);font-size:12px;text-align:right;padding-left:2px}
+#trace tr.cur td{background:var(--accent-soft)}
+#trace tr.future td{color:transparent}
+#trace tr.future td *{visibility:hidden}
+.key{display:inline-flex;align-items:center;gap:5px}
+.key i{display:inline-block;width:12px;height:12px;border-radius:2px}
+
+@media (max-width:1100px){
+  .app{height:auto}
+  .mid{grid-template-columns:240px minmax(0,1fr)}
+  .now{grid-column:1/3}
+  .status{margin-left:0}
+}
+@media (max-width:700px){ .mid{grid-template-columns:minmax(0,1fr)} .now{grid-column:auto} }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="panel top">
+    <h1>Radix-4 Booth Multiplier</h1>
+    <div class="inputs">
+      <label>Multiplicand <input id="inM" value="-13" autocomplete="off" spellcheck="false"></label>
+      <label>Multiplier <input id="inQ" value="-37" autocomplete="off" spellcheck="false"></label>
+      <label>Bits <select id="inW"><option>4</option><option selected>8</option><option>16</option><option>32</option></select></label>
+      <span class="err" id="err" role="alert"></span>
+    </div>
+    <div class="btns">
+      <button class="btn" id="bReset" type="button">Reset</button>
+      <button class="btn" id="bBack" type="button">Back</button>
+      <button class="btn primary" id="bStep" type="button">Step</button>
+    </div>
+    <div class="status">
+      <span class="pill on" id="pCycle">Cycle 0 of 4</span>
+      <span class="pill" id="pBusy">Idle</span>
+    </div>
+  </div>
+
+  <div class="mid">
+    <div class="panel">
+      <h2>Booth table</h2>
+      <table id="booth">
+        <thead><tr><th>Block</th><th>Partial product</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="panel dp">
+      <h2>Datapath</h2>
+      <svg viewBox="0 0 660 300" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Datapath of the multiplier">
+        <defs>
+          <marker id="a0" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--wire)"/></marker>
+          <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--accent)"/></marker>
+          <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--add)"/></marker>
+          <marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--sub)"/></marker>
+        </defs>
+
+        <!-- wires -->
+        <path id="wQB"  class="w" d="M265 42H325"/>
+        <path id="wBS"  class="w" d="M400 70V118"/>
+        <path id="wBA"  class="w" d="M475 30H580V118"/>
+        <path id="wMS"  class="w" d="M265 140H325"/>
+        <path id="wSA"  class="w" d="M475 140H515"/>
+        <path id="wAP"  class="w" d="M580 176V222"/>
+        <path id="wPA"  class="w" d="M520 252H500V165H515"/>
+        <path id="wCD"  class="w" d="M265 252H325"/>
+
+        <text class="lbl" x="295" y="34" text-anchor="middle">3 bits</text>
+        <text class="lbl" x="406" y="99">choose</text>
+        <text class="lbl" x="528" y="22" text-anchor="middle">add or subtract</text>
+        <text class="lbl" x="494" y="205" text-anchor="end">running total</text>
+
+        <!-- multiplier -->
+        <rect id="xQ" class="box" x="10" y="12" width="255" height="60" rx="8"/>
+        <text class="t" x="24" y="33">Multiplier</text><text class="s" x="98" y="33">shifts right 2 per cycle</text>
+        <text class="v" id="vQ" x="24" y="58"></text>
+
+        <!-- booth lookup -->
+        <rect id="xB" class="box" x="325" y="12" width="150" height="58" rx="8"/>
+        <text class="t" x="339" y="33">Booth table</text>
+        <text class="v" id="vB" x="339" y="57"></text>
+
+        <!-- multiplicand -->
+        <rect id="xM" class="box" x="10" y="110" width="255" height="60" rx="8"/>
+        <text class="t" x="24" y="131">Multiplicand</text><text class="s" x="112" y="131">shifts left 2 (×4) per cycle</text>
+        <text class="v" id="vM" x="24" y="156"></text>
+
+        <!-- select -->
+        <rect id="xS" class="box" x="325" y="118" width="150" height="58" rx="8"/>
+        <text class="t" x="339" y="139">Pick 0, M or 2M</text>
+        <text class="v" id="vS" x="339" y="163"></text>
+
+        <!-- adder -->
+        <rect id="xA" class="box" x="515" y="118" width="135" height="58" rx="8"/>
+        <text class="t" x="529" y="139">Add / subtract</text>
+        <text class="v" id="vA" x="529" y="163"></text>
+
+        <!-- product -->
+        <rect id="xP" class="box" x="520" y="222" width="130" height="60" rx="8"/>
+        <text class="t" x="534" y="243">Product</text>
+        <text class="v" id="vP" x="534" y="268"></text>
+
+        <!-- counter -->
+        <rect id="xC" class="box" x="10" y="222" width="255" height="60" rx="8"/>
+        <text class="t" x="24" y="243">Cycle counter</text>
+        <text class="v" id="vC" x="24" y="268"></text>
+
+        <rect id="xD" class="box" x="325" y="222" width="150" height="60" rx="8"/>
+        <text class="t" x="339" y="243">Last cycle?</text>
+        <text class="v" id="vD" x="339" y="268"></text>
+      </svg>
+    </div>
+
+    <div class="panel now" aria-live="polite">
+      <div class="head"><h2 id="nowTitle"></h2></div>
+      <div id="now"></div>
+    </div>
+  </div>
+
+  <div class="panel trace">
+    <div class="head">
+      <h2>Registers after each cycle</h2>
+      <p>Each cycle uses the values in the row above it.</p>
+    </div>
+    <div class="tscroll">
+      <table id="trace">
+        <thead><tr><th>Cycle</th><th>Block</th><th>Action</th><th>Multiplier</th><th colspan="2">Multiplicand</th><th colspan="2">Product</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script id="model">
+/* Cycle-accurate model of the signed radix-4 Booth multiply in MCycle.v */
+var BoothModel = (function () {
+  var DIGIT = [0, 1, 1, 2, -2, -1, -1, 0];               // indexed by the 3-bit block
+  function mask(n) { return (1n << BigInt(n)) - 1n; }
+  function toSigned(v, n) { v &= mask(n); return ((v >> BigInt(n - 1)) & 1n) ? v - (1n << BigInt(n)) : v; }
+  function simulate(M, Q, W) {
+    var W2 = 2 * W, N = (W + 1) >> 1, m2 = mask(W2);
+    // multiplier register: {sign of Q, Q, 0}  (W+2 bits)
+    var bq = (((Q >> BigInt(W - 1)) & 1n) << BigInt(W + 1)) | ((Q & mask(W)) << 1n);
+    var sh1 = M & m2, temp = 0n;                           // sign-extended multiplicand, product = 0
+    var frames = [{ phase: 'idle', bq: bq, sh1: sh1, temp: temp }];
+    for (var k = 1; k <= N; k++) {
+      var win = Number(bq & 7n), d = DIGIT[win];
+      var two = (sh1 << 1n) & m2;
+      var mult = Math.abs(d) === 2 ? two : (Math.abs(d) === 1 ? sh1 : 0n);
+      var pp = d >= 0 ? mult : ((-mult) & m2);
+      var tempN = (temp + pp) & m2;
+      var sign = (bq >> BigInt(W + 1)) & 1n;
+      var bqN = (sign ? (3n << BigInt(W)) : 0n) | (bq >> 2n);   // arithmetic shift right by 2
+      var sh1N = (sh1 << 2n) & m2;                         // shift left by 2
+      frames.push({ phase: 'run', k: k, win: win, d: d, bq: bq, sh1: sh1, temp: temp, mult: mult, pp: pp,
+                    tempN: tempN, bqN: bqN, sh1N: sh1N });
+      bq = bqN; sh1 = sh1N; temp = tempN;
+    }
+    frames.push({ phase: 'done', bq: bq, sh1: sh1, temp: temp });
+    var expected = (M * Q) & m2;
+    return { W: W, W2: W2, N: N, frames: frames, product: temp, expected: expected, ok: temp === expected };
+  }
+  return { simulate: simulate, toSigned: toSigned, mask: mask, DIGIT: DIGIT };
+})();
+</script>
+
+<script id="ui">
+(function () {
+  'use strict';
+  var B = BoothModel, MINUS = '−', TIMES = '×';
+  function $(id) { return document.getElementById(id); }
+  function dec(v) { return v < 0n ? MINUS + (-v) : String(v); }
+  function bin(v, n) { return (v & B.mask(n)).toString(2).padStart(n, '0'); }
+  function sv(v, n) { return dec(B.toSigned(v, n)); }
+  function kind(d) { return d > 0 ? 'add' : d < 0 ? 'sub' : 'none'; }
+  function ppText(d) { return d === 0 ? '0' : (d < 0 ? MINUS : '') + Math.abs(d) + ' ' + TIMES + ' multiplicand'; }
+  function action(d) { return d === 0 ? 'do nothing' : (d > 0 ? 'add ' : 'subtract ') + Math.abs(d) + ' ' + TIMES + ' multiplicand'; }
+  var TABLE = ['000', '001', '010', '011', '100', '101', '110', '111'];
+
+  // binary digits; groups of 4 unless noGap; optional box round the low 3 bits; optional changed-bit marks
+  function bits(v, n, opt) {
+    opt = opt || {};
+    var h = '';
+    for (var i = n - 1; i >= 0; i--) {
+      var b = Number((v >> BigInt(i)) & 1n), cls = 'b';
+      if (opt.cmp != null && (((v ^ opt.cmp) >> BigInt(i)) & 1n)) cls += ' c';
+      if (opt.box && i === 2) h += '<span class="blk3">';
+      h += '<span class="' + cls + '">' + b + '</span>';
+      if (opt.box && i === 0) h += '</span>';
+      if (!opt.noGap && i % 4 === 0 && i > 0) h += '<span class="g"></span>';
+    }
+    return '<span class="bits">' + h + '</span>';
+  }
+
+  var W = 8, M = -13n, Q = -37n, sim, pos = 0;
+
+  function parse(str, w) {
+    var s = str.trim().replace(/−/g, '-');
+    if (!/^-?\d+$/.test(s)) return { err: 'enter a whole number' };
+    var v = BigInt(s), lo = -(1n << BigInt(w - 1)), hi = (1n << BigInt(w - 1)) - 1n;
+    if (v < lo || v > hi) return { err: 'must be between ' + dec(lo) + ' and ' + hi + ' for ' + w + ' bits' };
+    return { v: v };
+  }
+  function apply() {
+    var a = parse($('inM').value, W), b = parse($('inQ').value, W);
+    $('inM').setAttribute('aria-invalid', a.err ? 'true' : 'false');
+    $('inQ').setAttribute('aria-invalid', b.err ? 'true' : 'false');
+    $('err').textContent = a.err ? 'Multiplicand ' + a.err + '.' : b.err ? 'Multiplier ' + b.err + '.' : '';
+    if (a.err || b.err) return;
+    M = a.v; Q = b.v; sim = B.simulate(M, Q, W); pos = 0; render();
+  }
+
+  function sumRow(label, bitsHtml, decStr, c) {
+    if (W >= 32) return '<span class="k ' + c + '"><span>' + label + '</span><span class="d">' + decStr + '</span></span><span class="' + c + '">' + bitsHtml + '</span>';
+    return '<span class="k ' + c + '">' + label + '</span><span class="' + c + '">' + bitsHtml + '</span><span class="d ' + c + '">' + decStr + '</span>';
+  }
+  function cls(id, on, k) {
+    var e = $(id), c = e.getAttribute('class').split(' ')[0];
+    e.setAttribute('class', c + (on ? ' on' + (k && k !== 'none' ? ' ' + k : '') : ''));
+  }
+  function svgBits(v, n, hiLow3) {
+    var s = bin(v, n);
+    if (!hiLow3) return s;
+    return s.slice(0, n - 3) + '<tspan class="hi">' + s.slice(n - 3) + '</tspan>';
+  }
+
+  function render() {
+    document.body.classList.toggle('w32', W >= 32);
+    var N = sim.N, f = sim.frames[pos], W2 = sim.W2, run = f.phase === 'run', done = f.phase === 'done';
+    var d = run ? f.d : 0, k = kind(d);
+    $('pCycle').textContent = 'Cycle ' + Math.min(pos, N) + ' of ' + N;
+    $('pBusy').textContent = run ? 'Busy' : done ? 'Done' : 'Idle';
+    $('pBusy').className = 'pill' + (f.phase === 'idle' ? '' : ' on');
+    $('bBack').disabled = $('bReset').disabled = pos === 0;
+    $('bStep').disabled = pos > N;
+
+    // Booth table
+    $('booth').tBodies[0].innerHTML = TABLE.map(function (blk, i) {
+      var dd = B.DIGIT[i], on = run && f.win === i;
+      return '<tr class="' + (on ? 'on' : '') + '"><td class="mono">' + blk + '</td><td class="' + kind(dd) + '">' + ppText(dd) + '</td></tr>';
+    }).join('');
+
+    // Datapath
+    $('vQ').innerHTML = svgBits(f.bq, W + 2, !done);
+    $('vB').textContent = run ? bin(BigInt(f.win), 3) + ' → ' + (d === 0 ? '0' : (d < 0 ? MINUS : '+') + Math.abs(d) + ' ' + TIMES) : '–';
+    $('vM').textContent = 'M = ' + sv(f.sh1, W2);
+    $('vS').textContent = run ? (d === 0 ? '0' : (Math.abs(d) === 2 ? '2M = ' : 'M = ') + sv(f.mult, W2)) : '–';
+    $('vA').textContent = run ? (d === 0 ? '+ 0' : (d > 0 ? '+ ' : MINUS + ' ') + (Math.abs(d) === 2 ? '2M' : 'M')) : '–';
+    $('vP').textContent = run ? (W >= 32 ? '→ ' : sv(f.temp, W2) + ' → ') + sv(f.tempN, W2) : sv(f.temp, W2);
+    $('vC').textContent = (run ? f.k : Math.min(pos, N)) + ' of ' + N;
+    $('vD').textContent = run ? (f.k === N ? 'yes → done' : 'no') : done ? 'done' : '–';
+    ['xQ', 'xB', 'xM', 'xC'].forEach(function (id) { cls(id, run); });
+    cls('xS', run && d !== 0, k); cls('xA', run, k); cls('xP', run || done); cls('xD', (run && f.k === N) || done);
+    ['wQB', 'wBS', 'wMS', 'wPA', 'wAP', 'wCD'].forEach(function (id) { cls(id, run); });
+    cls('wBA', run, k); cls('wSA', run && d !== 0, k);
+
+    // This cycle
+    var h = '';
+    if (f.phase === 'idle') {
+      $('nowTitle').textContent = 'Ready';
+      h = '<p class="big">' + dec(M) + ' ' + TIMES + ' ' + dec(Q) + ' takes ' + N + ' cycles (2 multiplier bits per cycle).</p>' +
+        '<p class="note" style="margin-top:0">Each cycle reads the rightmost 3 bits of the multiplier, looks them up in the Booth table, and adds or subtracts the multiplicand into the product. The multiplier starts with an extra 0 on its right.</p>';
+    } else if (run) {
+      $('nowTitle').textContent = 'Cycle ' + f.k + ' of ' + N;
+      var rows = sumRow('Product', bits(f.temp, W2), sv(f.temp, W2), '');
+      rows += d === 0
+        ? sumRow('+ 0', bits(0n, W2), '0', 'none')
+        : sumRow((d > 0 ? '+ ' : MINUS + ' ') + (Math.abs(d) === 2 ? '2M' : 'M'), bits(f.mult, W2), sv(f.mult, W2), k);
+      rows += '<span class="rule"></span>' + sumRow('<b>New product</b>', '<b>' + bits(f.tempN, W2) + '</b>', '<b>' + sv(f.tempN, W2) + '</b>', '');
+      h = '<p class="big ' + k + '">Block ' + bin(BigInt(f.win), 3) + ': ' + action(d) + '</p>' +
+        '<div class="sum' + (W >= 32 ? ' w32' : W >= 16 ? ' w16' : '') + '">' + rows + '</div>' +
+        '<p class="note">Then the multiplicand shifts left 2 (×4) and the multiplier shifts right 2.' + (f.k === N ? ' <b>Last cycle.</b>' : '') + '</p>';
+    } else {
+      $('nowTitle').textContent = 'Done in ' + N + ' cycles';
+      var p = B.toSigned(sim.product, W2);
+      h = '<p class="big">Product = ' + dec(p) + ' ' + (sim.ok ? '<span class="ok">✓</span>' : '<span class="sub">✗ expected ' + sv(sim.expected, W2) + '</span>') + '</p>' +
+        '<div class="sum"><span class="k">Upper ' + W + ' bits</span>' + bits(sim.product >> BigInt(W), W) + '<span></span>' +
+        '<span class="k">Lower ' + W + ' bits</span>' + bits(sim.product, W) + '<span></span></div>' +
+        '<p class="note">' + dec(M) + ' ' + TIMES + ' ' + dec(Q) + ' = ' + dec(p) + '. The two halves are the result outputs.</p>';
+    }
+    $('now').innerHTML = h;
+
+    // Trace: row 0 = loaded values, row k = values after cycle k
+    var last = Math.min(pos, N), tr = '';
+    for (var r = 0; r <= N; r++) {
+      var bq, sh, t, pbq = null, psh = null, pt = null, blk = '', act = '';
+      if (r === 0) { var s0 = sim.frames[0]; bq = s0.bq; sh = s0.sh1; t = s0.temp; }
+      else {
+        var fr = sim.frames[r];
+        bq = fr.bqN; sh = fr.sh1N; t = fr.tempN; pbq = fr.bq; psh = fr.sh1; pt = fr.temp;
+        blk = bin(BigInt(fr.win), 3);
+        act = '<span class="' + kind(fr.d) + '">' + (fr.d === 0 ? 'nothing' : ppText(fr.d)) + '</span>';
+      }
+      var cur = run && r === last, future = r > last, box = run && r === pos - 1;
+      tr += '<tr class="' + (cur ? 'cur' : '') + (future ? ' future' : '') + '">' +
+        '<td>' + (r === 0 ? 'Start' : r) + '</td><td class="mono">' + blk + '</td>' +
+        '<td>' + (r === 0 ? '<span class="none">load</span>' : act) + '</td>' +
+        '<td>' + bits(bq, W + 2, { box: box, noGap: true }) + '</td>' +
+        '<td>' + bits(sh, W2) + '</td><td class="dec">' + sv(sh, W2) + '</td>' +
+        '<td>' + bits(t, W2) + '</td><td class="dec">' + sv(t, W2) + '</td></tr>';
+    }
+    $('trace').tBodies[0].innerHTML = tr;
+    var sc = document.querySelector('.tscroll'), row = $('trace').tBodies[0].rows[Math.min(pos, N)];
+    if (row) {
+      var top = row.offsetTop - $('trace').tHead.offsetHeight, bottom = row.offsetTop + row.offsetHeight;
+      if (bottom > sc.scrollTop + sc.clientHeight) sc.scrollTop = bottom - sc.clientHeight;
+      else if (top < sc.scrollTop) sc.scrollTop = Math.max(0, top);
+    }
+  }
+
+  function go(p) { pos = Math.max(0, Math.min(sim.N + 1, p)); render(); }
+  $('bStep').addEventListener('click', function () { go(pos + 1); });
+  $('bBack').addEventListener('click', function () { go(pos - 1); });
+  $('bReset').addEventListener('click', function () { go(0); });
+  $('inM').addEventListener('input', apply);
+  $('inQ').addEventListener('input', apply);
+  var EXAMPLE = { 4: [-3, 5], 8: [-13, -37], 16: [-1234, 567], 32: [-123456, 789] };
+  $('inW').addEventListener('change', function () {
+    W = Number($('inW').value);
+    if (parse($('inM').value, W).err || parse($('inQ').value, W).err) {
+      $('inM').value = EXAMPLE[W][0]; $('inQ').value = EXAMPLE[W][1];
+    }
+    apply();
+  });
+  document.addEventListener('keydown', function (e) {
+    var t = e.target && e.target.tagName;
+    if (t === 'INPUT' || t === 'SELECT' || !sim) return;
+    if (e.key === 'ArrowRight') { e.preventDefault(); go(pos + 1); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); go(pos - 1); }
+  });
+  apply();
+})();
+</script>
+</body>
+</html>
