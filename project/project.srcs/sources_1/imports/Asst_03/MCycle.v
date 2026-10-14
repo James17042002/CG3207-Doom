@@ -111,7 +111,7 @@ module MCycle
             temp_sum = 0 ;
             
             booth_q = {
-                (~MCycleOp[0] & Operand2[width-1]),
+                (~MCycleOp[0] & Operand2[width-1]), 
                 Operand2,
                 1'b0
             };
