@@ -35,7 +35,7 @@ module PC_Logic( // This is a combinational module, unlike ARM. See the note bel
 	input [1:0] PCS,	// 00 for non-control, 01 for conditional branch, 10 for jal, 11 for jalr
 	input [2:0] Funct3,	// condition specified in the instruction (eq / ne / lt / ge / ltu / geu)
 	input [2:0] ALUFlags, 	// {eq, lt, ltu}
-	output reg [1:0] PCSrc	// will need to be expanded to 2 bits to support jalr
+	output reg [2:0] PCSrc	// will need to be expanded to 3 bits to support jalr and pipelining
     );
     
     /* 
@@ -45,33 +45,32 @@ module PC_Logic( // This is a combinational module, unlike ARM. See the note bel
     */
     
     
-	// todo: conditional logic goes here
     always @(*) begin
         // Default first - avoids inferring a latch if any PCS/Funct3
         // combination falls through unhandled.
-        PCSrc = 2'b00;
+        PCSrc = 3'b000;
     
         if (PCS == 2'b00) begin
             // Non-control instruction
-            PCSrc = 2'b00;
+            PCSrc = 2'b000;
     
         end else if (PCS == 2'b01) begin
             // Conditional branch - decide 'taken' from Funct3 + ALUFlags
-            if (Funct3 == 3'b000)      PCSrc = ALUFlags[2] ? 2'b10 : 2'b00; // beq
-            else if (Funct3 == 3'b001) PCSrc = ~ALUFlags[2] ? 2'b10 : 2'b00; // bne
-            else if (Funct3 == 3'b100) PCSrc = ALUFlags[1] ? 2'b10 : 2'b00; // blt
-            else if (Funct3 == 3'b101) PCSrc = ~ALUFlags[1] ? 2'b10 : 2'b00; // bge
-            else if (Funct3 == 3'b110) PCSrc = ALUFlags[0] ? 2'b10 : 2'b00; // bltu
-            else if (Funct3 == 3'b111) PCSrc = ~ALUFlags[0] ? 2'b10 : 2'b00; // bgeu
-            else                       PCSrc = 2'b00; // undefined Funct3, safe default
-    
+            // Taken target uses Top MUX = 1 (ExtImmE) and Bottom MUX = 01 (PCE) -> 3'b101
+            if (Funct3 == 3'b000)      PCSrc = ALUFlags[2] ? 3'b101 : 3'b000; // beq
+            else if (Funct3 == 3'b001) PCSrc = ~ALUFlags[2] ? 3'b101 : 3'b000; // bne
+            else if (Funct3 == 3'b100) PCSrc = ALUFlags[1] ? 3'b101 : 3'b000; // blt
+            else if (Funct3 == 3'b101) PCSrc = ~ALUFlags[1] ? 3'b101 : 3'b000; // bge
+            else if (Funct3 == 3'b110) PCSrc = ALUFlags[0] ? 3'b101 : 3'b000; // bltu
+            else if (Funct3 == 3'b111) PCSrc = ~ALUFlags[0] ? 3'b101 : 3'b000; // bgeu
+            else                       PCSrc = 3'b000; // undefined Funct3, safe default
         end else if (PCS == 2'b10) begin
-            // jal - always taken
-            PCSrc = 2'b10;
+            // Target uses Top MUX = 1 (ExtImmE) and Bottom MUX = 01 (PCE) -> 3'b101
+            PCSrc = 3'b101;
     
         end else if (PCS == 2'b11) begin
             // jalr - always taken
-            PCSrc = 2'b11;
+            PCSrc = 3'b111;
         end
     end
 	
