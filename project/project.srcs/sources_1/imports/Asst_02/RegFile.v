@@ -45,7 +45,7 @@ module RegFile(
     // declare RegBank
     reg [31:0] RegBank[0:31] ;
         // 32 addresses, each a 32-bit word
-        // (1 to 31) is sufficient as R15 is not stored. Kept it as (0 to 31) just to supress a warning
+        // (1 to 31) is sufficient as x0 is not stored. Kept it as (0 to 31) just to supress a warning
 		
     // read
     always@(*)	// change to @posedge CLK only if using synch read. In that case, the output is RD1E, RD2E directly
