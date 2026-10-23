@@ -161,6 +161,12 @@ module RV #(
     wire        WE ;
     wire [31:0] WD ;
 
+    // ---------------- Hazard control ----------------
+    wire        StallF ;
+    wire        StallD ;
+    wire        StallE ;
+    wire        FlushM ;
+
     // ============================================================
     // Fetch Stage
     // ============================================================
@@ -179,7 +185,7 @@ module RV #(
     assign PC_Offset = PCSrcE[2] ? ExtImmE : 32'd4;
     assign PC_IN = PC_Base + PC_Offset;
 
-    assign WE_PC = ~MCycleBusy ;    // Freeze PC while a multi-cycle operation (Multiplication, Division) is on. Will need more control for Pipelining with hazard hardware.
+    assign WE_PC = ~StallF ;
 
     // Fetch outputs (PC register is updated on posedge CLK inside ProgramCounter)
     assign PCF = PC;
@@ -204,7 +210,7 @@ module RV #(
             InstrD <= 32'h00000013;     // NOP
             PCD    <= 32'b0;
         end
-        else begin
+        else if (~StallD) begin
             InstrD <= InstrF;
             PCD    <= PCF;
         end
@@ -280,7 +286,7 @@ module RV #(
             ExtImmE     <= 32'b0;
             rdE         <= 5'b0;
         end
-        else begin
+        else if (~StallE) begin
             RegWriteE   <= RegWriteD;
             MemtoRegE   <= MemtoRegD;
             MemWriteE   <= MemWriteD;
@@ -359,9 +365,9 @@ module RV #(
     // Memory Stage
     // ============================================================
 
-    // Pipeline register E -> M
+    // Pipeline register E -> M (FlushM inserts a bubble)
     always @(posedge CLK) begin
-        if (RESET) begin
+        if (RESET | FlushM) begin
             RegWriteM  <= 1'b0;
             MemtoRegM  <= 1'b0;
             MemWriteM  <= 1'b0;
@@ -411,7 +417,18 @@ module RV #(
     end
 
     // RegFile write port
-    assign WE = RegWriteW & ~MCycleBusy;    // Don't write intermediate MCycle results to rd; write only once Busy drops
+    assign WE = RegWriteW;
     assign WD = MemtoRegW ? ReadDataW : ResultW;    // Data from Memory, or the Execute result (ALU or MCycle)
+
+    // ============================================================
+    // Hazard control
+    // ============================================================
+
+    // Multi-cycle operation (mul/div/rem) in Execute: hold F, D and E until MCycle is done,
+    // and insert bubbles into M so that older instructions in M and W can still complete.
+    assign StallF = MCycleBusy ;
+    assign StallD = MCycleBusy ;
+    assign StallE = MCycleBusy ;
+    assign FlushM = MCycleBusy ;
 
 endmodule
