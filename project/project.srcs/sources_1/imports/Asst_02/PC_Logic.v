@@ -52,7 +52,7 @@ module PC_Logic( // This is a combinational module, unlike ARM. See the note bel
     
         if (PCS == 2'b00) begin
             // Non-control instruction
-            PCSrc = 2'b000;
+            PCSrc = 3'b000;
     
         end else if (PCS == 2'b01) begin
             // Conditional branch - decide 'taken' from Funct3 + ALUFlags
