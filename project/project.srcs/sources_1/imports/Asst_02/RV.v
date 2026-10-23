@@ -53,260 +53,254 @@ module RV #(
 );
     
     // Please read Lab 4 Enhancement: Implementing additional instructions on how to support lb/lbu/lh/lhu/sb/sh
-        
-    //RV Signals
-    wire [2:0] SizeSel;     //to support lb/lbu/lh/lhu/sb/sh
-//    wire [31:0] ReadData;
-//    wire [31:0] WriteData;
-    //wire MemWrite;
 
-    // The signals that are commented out (except CLK) will need to be uncommented and attached a stage suffix for pipelining,
-    //  except if the connection is within the same stage.
+    // ============================================================
+    // Signal declarations, grouped by pipeline stage
+    // ============================================================
 
-    // RegFile signals
-    //wire CLK ;
-    wire WE ;
-    //wire [4:0] rs1 ;
-    //wire [4:0] rs2 ;
-    //wire [4:0] rd ;
-    wire [31:0] WD ;
-    //wire [31:0] RD1 ;
-    //wire [31:0] RD2 ;
-    
-    // Extend Module signals
-    wire [2:0] ImmSrc ;
+    // ---------------- Fetch ----------------
+    // Next-PC logic (selected by Execute-stage PCSrcE)
+    reg  [31:0] PC_Base ;
+    wire [31:0] PC_Offset ;
+    // ProgramCounter
+    wire        WE_PC ;
+    wire [31:0] PC_IN ;
+    wire [31:0] PC ;
+    // Fetch outputs
+    wire [31:0] PCF ;
+    wire [31:0] InstrF ;
+
+    // ---------------- Decode ----------------
+    // Pipeline register F -> D
+    reg  [31:0] PCD ;
+    reg  [31:0] InstrD ;
+    // Instruction fields
+    wire [6:0]  Opcode ;
+    wire [2:0]  Funct3D ;
+    wire [6:0]  Funct7 ;
+    wire [4:0]  rs1D ;
+    wire [4:0]  rs2D ;
+    wire [4:0]  rdD ;
     wire [24:0] InstrImm ;
-    //wire [31:0] ExtImm ;
-    
-    // Decoder signals
-    wire [6:0] Opcode ;
-    wire [6:0] Funct7 ;
-    //wire [1:0] PCS ;
-    //wire RegWrite ;
-    //wire MemWrite ;
-    //wire MemtoReg ;
-    //wire [1:0] ALUSrcA ;
-    //wire [1:0] ALUSrcB ;
-    //wire [2:0] ImmSrc ;
-    //wire [3:0] ALUControl ;
-    wire MCycleStart ;
-    wire [1:0] MCycleOp ;
-    wire MCycleResultSel ;
+    // Decoder control outputs
+    wire        RegWriteD ;
+    wire        MemtoRegD ;
+    wire        MemWriteD ;
+    wire [1:0]  PCSD ;
+    wire [3:0]  ALUControlD ;
+    wire [1:0]  ALUSrcAD ;
+    wire [1:0]  ALUSrcBD ;
+    wire [2:0]  ImmSrc ;            // used only by Extend in this stage
+    wire        MCycleStartD ;
+    wire [1:0]  MCycleOpD ;
+    wire        MCycleResultSelD ;
+    // RegFile read ports
+    wire [31:0] RD1D ;
+    wire [31:0] RD2D ;
+    // Extend
+    wire [31:0] ExtImmD ;
 
-    // MCycle signals
-    //wire CLK ;
-    //wire RESET ;
-    //wire MCycleStart ;
-    //wire [1:0] MCycleOp ;
-    //wire [31:0] RD1 ;     // Operand1
-    //wire [31:0] RD2 ;     // Operand2
+    // ---------------- Execute ----------------
+    // Pipeline register D -> E: control
+    reg         RegWriteE ;
+    reg         MemtoRegE ;
+    reg         MemWriteE ;
+    reg  [1:0]  PCSE ;
+    reg  [2:0]  Funct3E ;           // branch condition for PC_Logic
+    reg  [3:0]  ALUControlE ;
+    reg  [1:0]  ALUSrcAE ;
+    reg  [1:0]  ALUSrcBE ;
+    reg         MCycleStartE ;
+    reg  [1:0]  MCycleOpE ;
+    reg         MCycleResultSelE ;
+    // Pipeline register D -> E: data
+    reg  [31:0] PCE ;
+    reg  [31:0] RD1E ;
+    reg  [31:0] RD2E ;
+    reg  [31:0] ExtImmE ;
+    reg  [4:0]  rdE ;
+    // ALU
+    reg  [31:0] Src_A ;
+    reg  [31:0] Src_B ;
+    wire [31:0] ALUResultE ;
+    wire [2:0]  ALUFlags ;
+    // PC_Logic
+    wire [2:0]  PCSrcE ;
+    // MCycle
     wire [31:0] MCycleResult1 ;
     wire [31:0] MCycleResult2 ;
-    wire MCycleBusy ;
-
-    // PC_Logic signals
-    //wire [1:0] PCS
-    //wire [2:0] Funct3;
-    //wire [2:0] ALUFlags;
-    wire [2:0] PCSrcE;
-      
-    // ALU signals
-    reg [31:0] Src_A ;
-    reg [31:0] Src_B ;
-    //wire [3:0] ALUControl ;
-    //wire [31:0] ALUResult ;
-    wire [2:0] ALUFlags ;
-    
-    // ProgramCounter signals
-    //wire CLK ;
-    //wire RESET ;
-    wire WE_PC ;    
-    wire [31:0] PC_IN ;
-    wire [31:0] PC ; 
-        
-    // Other internal signals here
-    reg [31:0] PC_Base ;
-    wire [31:0] PC_Offset ;
-    //wire [31:0] Result ;
     wire [31:0] MCycleResult ;
-    
-    // Pipeline Per Stage Signals
-    
-    // Fetch Stage signals
-    wire [31:0] PCF;
-    wire [31:0] InstrF;
-    
-    // Decode Stage signals
-    reg [31:0] PCD;
-    reg [31:0] InstrD;
-    
-    wire [31:0] RD1D;
-    wire [31:0] RD2D;
-    wire [31:0] ExtImmD;
-    wire [4:0] rdD;
-    wire [4:0] rs1D;
-    wire [4:0] rs2D;
-    wire [1:0] PCSD;
-    wire [2:0] Funct3D;
-    wire RegWriteD;
-    wire MemtoRegD;
-    wire MemWriteD;
-    wire [3:0] ALUControlD;
-    wire [1:0] ALUSrcAD;
-    wire [1:0] ALUSrcBD;
-    
-    
-    // Execute Stage signals
-    reg [31:0] RD1E;
-    reg [31:0] RD2E;
-    reg [31:0] ExtImmE;
-    reg [31:0] PCE;
-    reg [4:0] rdE;
-    wire [31:0] ALUResultE;
-    
-    wire [31:0] WriteDataE;
-    reg RegWriteE;
-    reg [1:0] PCSE;
-    reg MemtoRegE;
-    reg MemWriteE;
-    reg [3:0] ALUControlE;
-    reg [1:0] ALUSrcAE;
-    reg [1:0] ALUSrcBE;
-    reg [2:0] Funct3E;
-    
-    // Memory Stage signals
-    reg RegWriteM;
-    reg MemtoRegM;
-    wire [31:0] ReadDataM;
-    reg MemWriteM;
-    reg [31:0] ALUResultM;
-    reg [31:0] WriteDataM;
-    reg [4:0] rdM;
-    
-    // Writeback Stage signals
-    reg RegWriteW;
-    reg MemtoRegW;
-    reg [31:0] ReadDataW;
-    reg [31:0] ALUResultW;
-    wire [31:0] ResultW;
-    reg [4:0] rdW;
-    
-    // Pipeline Updates every clock cycle
-    
-    // Fetch Stage Registers (Registers already updated on posedge clk in Program Counter)
+    wire        MCycleBusy ;
+    // Execute result (ALU or MCycle)
+    wire [31:0] ResultE ;
+    // Store data to Memory
+    wire [31:0] WriteDataE ;
+
+    // ---------------- Memory ----------------
+    // Pipeline register E -> M: control
+    reg         RegWriteM ;
+    reg         MemtoRegM ;
+    reg         MemWriteM ;
+    // Pipeline register E -> M: data
+    reg  [31:0] ResultM ;
+    reg  [31:0] WriteDataM ;
+    reg  [4:0]  rdM ;
+    // Data memory interface
+    wire [31:0] ReadDataM ;
+    wire [2:0]  SizeSel ;           // to support lb/lbu/lh/lhu/sb/sh
+
+    // ---------------- Writeback ----------------
+    // Pipeline register M -> W: control
+    reg         RegWriteW ;
+    reg         MemtoRegW ;
+    // Pipeline register M -> W: data
+    reg  [31:0] ReadDataW ;
+    reg  [31:0] ResultW ;
+    reg  [4:0]  rdW ;
+    // RegFile write port
+    wire        WE ;
+    wire [31:0] WD ;
+
+    // ============================================================
+    // Fetch Stage
+    // ============================================================
+
+    // Next PC uses a single adder: PC_Base + PC_Offset
+    // Note that this differs from the schematic, which did not include support for jalr
+    // PCSrc: 000: PCF + 4, 101: PCE + ExtImm (branch, jal), 111: RD1 + ExtImm (jalr)
+    always @(*) begin
+        case (PCSrcE[1:0])
+            2'b00:   PC_Base = PCF;     // PC + 4
+            2'b01:   PC_Base = PCE;     // branch, jal
+            2'b11:   PC_Base = RD1E;    // jalr
+            default: PC_Base = PCF;     // 2'b10 unused
+        endcase
+    end
+    assign PC_Offset = PCSrcE[2] ? ExtImmE : 32'd4;
+    assign PC_IN = PC_Base + PC_Offset;
+
+    assign WE_PC = ~MCycleBusy ;    // Freeze PC while a multi-cycle operation (Multiplication, Division) is on. Will need more control for Pipelining with hazard hardware.
+
+    // Fetch outputs (PC register is updated on posedge CLK inside ProgramCounter)
     assign PCF = PC;
     assign InstrF = Instr;
-    
-    // Decode Stage Registers
+
+    // Instantiate ProgramCounter
+    ProgramCounter #(.PC_INIT(PC_INIT)) ProgramCounter1(
+                    CLK,
+                    RESET,
+                    WE_PC,
+                    PC_IN,
+                    PC
+                );
+
+    // ============================================================
+    // Decode Stage
+    // ============================================================
+
+    // Pipeline register F -> D
     always @(posedge CLK) begin
         if (RESET) begin
-            InstrD <= 32'h00000013;   // NOP
+            InstrD <= 32'h00000013;     // NOP
             PCD    <= 32'b0;
-        end else begin
+        end
+        else begin
             InstrD <= InstrF;
             PCD    <= PCF;
         end
     end
-    
-    //Execute Stage Registers
-    always @(posedge CLK) begin
-        if (RESET) begin
-            RD1E <= 32'b0;
-            RD2E <= 32'b0;
-            ExtImmE <= 32'b0;
-            PCE <= 32'b0;
-            rdE <= 5'b0;
-            RegWriteE <= 1'b0;
-            PCSE <= 2'b0;
-            MemtoRegE <= 1'b0;
-            MemWriteE <= 1'b0;
-            ALUControlE <= 4'b0;
-            ALUSrcAE <= 2'b0;
-            ALUSrcBE <= 2'b0;
-            Funct3E <= 3'b0;
-         end
-         else begin
-         RD1E <= RD1D;
-         RD2E <= RD2D;
-         ExtImmE <= ExtImmD;
-         PCE <= PCD;
-         rdE <= rdD;
-         // ALUResultE output from ALU
-         RegWriteE <= RegWriteD;
-         PCSE <= PCSD;
-         MemtoRegE <= MemtoRegD;
-         MemWriteE <= MemWriteD;
-         ALUControlE <= ALUControlD;
-         ALUSrcAE <= ALUSrcAD;
-         ALUSrcBE <= ALUSrcBD;
-         Funct3E <= Funct3D;
-         end
-    end
-    
-    //Memory Stage Registers
-    assign ALUResult = ALUResultM; // Send ALUResultM to the wrapper to get the data at ALUResultM's location, as ReadData_in
 
-    always @(posedge CLK) begin
-        if (RESET) begin
-            RegWriteM  <= 1'b0;
-            MemtoRegM  <= 1'b0;
-            MemWriteM  <= 1'b0;
-            ALUResultM <= 32'b0;
-            WriteDataM <= 32'b0;
-            rdM        <= 5'b0;
-        end
-        else begin
-            RegWriteM <= RegWriteE;
-            MemtoRegM <= MemtoRegE;
-            MemWriteM <= MemWriteE;
-            ALUResultM <= ALUResultE;
-            WriteDataM <= WriteDataE;
-            rdM <= rdE;
-        end
-    end
-        
-    //Writeback Stage Registers
-    always @(posedge CLK) begin
-        if (RESET) begin
-            RegWriteW  <= 1'b0;
-            MemtoRegW  <= 1'b0;
-            ReadDataW  <= 32'b0;
-            ALUResultW <= 32'b0;
-            rdW        <= 5'b0;
-        end
-        else begin
-            RegWriteW  <= RegWriteM;
-            MemtoRegW  <= MemtoRegM;
-            ReadDataW  <= ReadDataM;
-            ALUResultW <= ALUResultM;
-            rdW        <= rdM;
-        end
-    end
-    
-    
-    
-    assign MemRead = MemtoRegM; // This is needed for the proper functionality of some devices such as UART CONSOLE
-    assign WE_PC = ~MCycleBusy ;  // Freeze PC while a multi-cycle operation (Multiplication, Division) is on. Will need more control for Pipelining with hazard hardware.
-
-    assign ReadDataM = ReadData_in;       // Change datapath as appropriate if supporting lb/lbu/lh/lhu
-    assign WriteData_out = WriteDataM;    // Change datapath as appropriate if supporting sb/sh
-    assign MemWrite_out = {4{MemWriteM}}; // Change datapath as appropriate if supporting sb/sh
-    assign SizeSel = 3'b010;             // Change this to be generated by the Decoder (control) as appropriate if 
-                                         // supporting lb/sb/lbu/lh/sh/lhu/lw/sw. Hint: funct3
-    
-    //Splitting full 32 bit instruction into format
-    assign Opcode = InstrD[6:0];
-    assign rdD = InstrD[11:7];
-    assign Funct3D = InstrD[14:12];
-    assign rs1D = InstrD[19:15];
-    assign rs2D = InstrD[24:20];
-    assign Funct7 = InstrD[31:25];
+    // Split the 32-bit instruction into its fields
+    assign Opcode   = InstrD[6:0];
+    assign rdD      = InstrD[11:7];
+    assign Funct3D  = InstrD[14:12];
+    assign rs1D     = InstrD[19:15];
+    assign rs2D     = InstrD[24:20];
+    assign Funct7   = InstrD[31:25];
     assign InstrImm = InstrD[31:7];
-    
-    //To control Write-Enable with pipelining
-    assign WE = RegWriteW & ~MCycleBusy; // Don't write intermediate MCycle results to rd; write only once Busy drops
-    
-    // Multiplexers for ALU Inputs modified for pipelining
+
+    // Instantiate Decoder
+    Decoder Decoder1(
+                    Opcode,
+                    Funct3D,
+                    Funct7,
+                    PCSD,
+                    RegWriteD,
+                    MemWriteD,
+                    MemtoRegD,
+                    ALUSrcAD,
+                    ALUSrcBD,
+                    ImmSrc,
+                    ALUControlD,
+                    MCycleStartD,
+                    MCycleOpD,
+                    MCycleResultSelD
+                );
+
+    // Instantiate RegFile (read in Decode; write port WE/rdW/WD is driven from Writeback)
+    RegFile RegFile1(
+                    CLK,
+                    WE,
+                    rs1D,
+                    rs2D,
+                    rdW,
+                    WD,
+                    RD1D,
+                    RD2D
+                );
+
+    // Instantiate Extend Module
+    Extend Extend1(
+                    ImmSrc,
+                    InstrImm,
+                    ExtImmD
+                );
+
+    // ============================================================
+    // Execute Stage
+    // ============================================================
+
+    // Pipeline register D -> E
+    always @(posedge CLK) begin
+        if (RESET) begin
+            RegWriteE   <= 1'b0;
+            MemtoRegE   <= 1'b0;
+            MemWriteE   <= 1'b0;
+            PCSE        <= 2'b0;
+            Funct3E     <= 3'b0;
+            ALUControlE <= 4'b0;
+            ALUSrcAE    <= 2'b0;
+            ALUSrcBE    <= 2'b0;
+            MCycleStartE     <= 1'b0;
+            MCycleOpE        <= 2'b0;
+            MCycleResultSelE <= 1'b0;
+            PCE         <= 32'b0;
+            RD1E        <= 32'b0;
+            RD2E        <= 32'b0;
+            ExtImmE     <= 32'b0;
+            rdE         <= 5'b0;
+        end
+        else begin
+            RegWriteE   <= RegWriteD;
+            MemtoRegE   <= MemtoRegD;
+            MemWriteE   <= MemWriteD;
+            PCSE        <= PCSD;
+            Funct3E     <= Funct3D;
+            ALUControlE <= ALUControlD;
+            ALUSrcAE    <= ALUSrcAD;
+            ALUSrcBE    <= ALUSrcBD;
+            MCycleStartE     <= MCycleStartD;
+            MCycleOpE        <= MCycleOpD;
+            MCycleResultSelE <= MCycleResultSelD;
+            PCE         <= PCD;
+            RD1E        <= RD1D;
+            RD2E        <= RD2D;
+            ExtImmE     <= ExtImmD;
+            rdE         <= rdD;
+        end
+    end
+
+    // Multiplexers for ALU inputs
     always @(*) begin
         case (ALUSrcAE)
             2'b00:   Src_A = RD1E;      // RD1
@@ -324,101 +318,100 @@ module RV #(
             default: Src_B = RD2E;      // 2'b10 unused
         endcase
     end
-    
-    assign MCycleResult = MCycleResultSel ? MCycleResult2 : MCycleResult1; // Result2 for mulh, mulhu, rem, remu. Result1 for mul, div, divu
-    assign ResultW = MemtoRegW ? ReadDataW : ALUResultW; //Multiplex Result from Memory or ALU. TODO: add MCycle result once MCycle is pipelined
-    assign WD = ResultW; //Write to Register File from result
-    
-    // PC with pipelining * Note that this differs from schematic as schematic did not include support for jalr
-    // Next PC uses a single adder: PC_Base + PC_Offset
-    // PCSrc: 000: PCF + 4, 101: PCE + ExtImm (branch, jal), 111: RD1 + ExtImm (jalr)
-    always @(*) begin
-        case (PCSrcE[1:0])
-            2'b00:   PC_Base = PCF;     // PC + 4
-            2'b01:   PC_Base = PCE;     // branch, jal
-            2'b11:   PC_Base = RD1E;    // jalr
-            default: PC_Base = PCF;     // 2'b10 unused
-        endcase
-    end
-    assign PC_Offset = PCSrcE[2] ? ExtImmE : 32'd4;
-    assign PC_IN = PC_Base + PC_Offset; 
+
+    assign MCycleResult = MCycleResultSelE ? MCycleResult2 : MCycleResult1; // Result2 for mulh, mulhu, rem, remu. Result1 for mul, div, divu
+    assign ResultE = MCycleStartE ? MCycleResult : ALUResultE;              // mul/div/rem write back the MCycle result instead of the ALU result
 
     // Store data in Execute stage. Replace RD2E with the forwarded rs2 value once forwarding is added.
     assign WriteDataE = RD2E;
-	
-    // Instantiate RegFile
-    RegFile RegFile1( 
-                    CLK,
-                    WE,
-                    rs1D,
-                    rs2D,
-                    rdW,
-                    WD,
-                    RD1D,
-                    RD2D     
-                );
-                
-     // Instantiate Extend Module
-    Extend Extend1(
-                    ImmSrc,
-                    InstrImm,
-                    ExtImmD
-                );
-                
-    // Instantiate Decoder
-    Decoder Decoder1(
-                    Opcode,
-                    Funct3D,
-                    Funct7,
-                    PCSD,
-                    RegWriteD,
-                    MemWriteD,
-                    MemtoRegD,
-                    ALUSrcAD,
-                    ALUSrcBD,
-                    ImmSrc,
-                    ALUControlD,
-                    MCycleStart,
-                    MCycleOp,
-                    MCycleResultSel
-                );
-                
-    // Instantiate PC_Logic with pipelining logic
-	PC_Logic PC_Logic1(
-                    PCSE,
-                    Funct3E,
-                    ALUFlags,
-                    PCSrcE
-		);
-                
-    // Instantiate ALU        
+
+    // Instantiate ALU
     ALU ALU1(
                     Src_A,
                     Src_B,
                     ALUControlE,
                     ALUResultE,
                     ALUFlags
-                );                
-    
+                );
+
+    // Instantiate PC_Logic
+    PC_Logic PC_Logic1(
+                    PCSE,
+                    Funct3E,
+                    ALUFlags,
+                    PCSrcE
+                );
+
     // Instantiate MCycle
     MCycle #(.width(32)) MCycle1(
                     CLK,
                     RESET,
-                    MCycleStart,
-                    MCycleOp,
-                    RD1D,
-                    RD2D,
+                    MCycleStartE,
+                    MCycleOpE,
+                    RD1E,       // Replace with the forwarded rs1 value once forwarding is added
+                    RD2E,       // Replace with the forwarded rs2 value once forwarding is added
                     MCycleResult1,
                     MCycleResult2,
                     MCycleBusy
                 );
-    
-    // Instantiate ProgramCounter    
-    ProgramCounter #(.PC_INIT(PC_INIT)) ProgramCounter1(
-                    CLK,
-                    RESET,
-                    WE_PC,    
-                    PC_IN,
-                    PC  
-                );                         
+
+    // ============================================================
+    // Memory Stage
+    // ============================================================
+
+    // Pipeline register E -> M
+    always @(posedge CLK) begin
+        if (RESET) begin
+            RegWriteM  <= 1'b0;
+            MemtoRegM  <= 1'b0;
+            MemWriteM  <= 1'b0;
+            ResultM    <= 32'b0;
+            WriteDataM <= 32'b0;
+            rdM        <= 5'b0;
+        end
+        else begin
+            RegWriteM  <= RegWriteE;
+            MemtoRegM  <= MemtoRegE;
+            MemWriteM  <= MemWriteE;
+            ResultM    <= ResultE;
+            WriteDataM <= WriteDataE;
+            rdM        <= rdE;
+        end
+    end
+
+    // Data memory interface (memory itself is in the Wrapper)
+    assign ALUResult = ResultM;             // Address sent to the Wrapper; data comes back as ReadData_in
+    assign MemRead = MemtoRegM;             // This is needed for the proper functionality of some devices such as UART CONSOLE
+    assign ReadDataM = ReadData_in;         // Change datapath as appropriate if supporting lb/lbu/lh/lhu
+    assign WriteData_out = WriteDataM;      // Change datapath as appropriate if supporting sb/sh
+    assign MemWrite_out = {4{MemWriteM}};   // Change datapath as appropriate if supporting sb/sh
+    assign SizeSel = 3'b010;                // Change this to be generated by the Decoder (control) as appropriate if
+                                            // supporting lb/sb/lbu/lh/sh/lhu/lw/sw. Hint: funct3
+
+    // ============================================================
+    // Writeback Stage
+    // ============================================================
+
+    // Pipeline register M -> W
+    always @(posedge CLK) begin
+        if (RESET) begin
+            RegWriteW  <= 1'b0;
+            MemtoRegW  <= 1'b0;
+            ReadDataW  <= 32'b0;
+            ResultW    <= 32'b0;
+            rdW        <= 5'b0;
+        end
+        else begin
+            RegWriteW  <= RegWriteM;
+            MemtoRegW  <= MemtoRegM;
+            ReadDataW  <= ReadDataM;
+            ResultW    <= ResultM;
+            rdW        <= rdM;
+        end
+    end
+
+    // RegFile write port
+    assign WE = RegWriteW & ~MCycleBusy;    // Don't write intermediate MCycle results to rd; write only once Busy drops
+    assign WD = MemtoRegW ? ReadDataW : ResultW;    // Data from Memory, or the Execute result (ALU or MCycle)
+
 endmodule
