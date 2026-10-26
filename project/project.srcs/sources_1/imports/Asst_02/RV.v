@@ -118,6 +118,8 @@ module RV #(
     reg  [31:0] RD1E ;
     reg  [31:0] RD2E ;
     reg  [31:0] ExtImmE ;
+    reg  [4:0]  rs1E ;
+    reg  [4:0]  rs2E ;
     reg  [4:0]  rdE ;
     // ALU
     reg  [31:0] Src_A ;
@@ -144,6 +146,7 @@ module RV #(
     // Pipeline register E -> M: data
     reg  [31:0] ResultM ;
     reg  [31:0] WriteDataM ;
+    reg  [4:0]  rs2M ;
     reg  [4:0]  rdM ;
     // Data memory interface
     wire [31:0] ReadDataM ;
@@ -165,7 +168,21 @@ module RV #(
     wire        StallF ;
     wire        StallD ;
     wire        StallE ;
+    wire        FlushD ;
+    wire        FlushE ;
     wire        FlushM ;
+    // Forwarding
+    reg  [1:0]  ForwardAE ;
+    reg  [1:0]  ForwardBE ;
+    reg  [31:0] FwdRD1E ;           // rs1 value used in Execute
+    reg  [31:0] FwdRD2E ;           // rs2 value used in Execute
+    wire [31:0] FwdRD1D ;           // rs1 value latched into Execute
+    wire [31:0] FwdRD2D ;           // rs2 value latched into Execute
+    wire        ForwardM ;
+    wire [31:0] FwdWriteDataM ;     // store data sent to Memory
+    // Stall / flush causes
+    wire        lwStall ;
+    wire        BranchTakenE ;
 
     // ============================================================
     // Fetch Stage
@@ -178,7 +195,7 @@ module RV #(
         case (PCSrcE[1:0])
             2'b00:   PC_Base = PCF;     // PC + 4
             2'b01:   PC_Base = PCE;     // branch, jal
-            2'b11:   PC_Base = RD1E;    // jalr
+            2'b11:   PC_Base = FwdRD1E; // jalr
             default: PC_Base = PCF;     // 2'b10 unused
         endcase
     end
@@ -204,9 +221,9 @@ module RV #(
     // Decode Stage
     // ============================================================
 
-    // Pipeline register F -> D
+    // Pipeline register F -> D (FlushD inserts a NOP)
     always @(posedge CLK) begin
-        if (RESET) begin
+        if (RESET | FlushD) begin
             InstrD <= 32'h00000013;     // NOP
             PCD    <= 32'b0;
         end
@@ -266,9 +283,9 @@ module RV #(
     // Execute Stage
     // ============================================================
 
-    // Pipeline register D -> E
+    // Pipeline register D -> E (FlushE inserts a bubble)
     always @(posedge CLK) begin
-        if (RESET) begin
+        if (RESET | FlushE) begin
             RegWriteE   <= 1'b0;
             MemtoRegE   <= 1'b0;
             MemWriteE   <= 1'b0;
@@ -284,6 +301,8 @@ module RV #(
             RD1E        <= 32'b0;
             RD2E        <= 32'b0;
             ExtImmE     <= 32'b0;
+            rs1E        <= 5'b0;
+            rs2E        <= 5'b0;
             rdE         <= 5'b0;
         end
         else if (~StallE) begin
@@ -299,9 +318,11 @@ module RV #(
             MCycleOpE        <= MCycleOpD;
             MCycleResultSelE <= MCycleResultSelD;
             PCE         <= PCD;
-            RD1E        <= RD1D;
-            RD2E        <= RD2D;
+            RD1E        <= FwdRD1D;
+            RD2E        <= FwdRD2D;
             ExtImmE     <= ExtImmD;
+            rs1E        <= rs1D;
+            rs2E        <= rs2D;
             rdE         <= rdD;
         end
     end
@@ -309,27 +330,27 @@ module RV #(
     // Multiplexers for ALU inputs
     always @(*) begin
         case (ALUSrcAE)
-            2'b00:   Src_A = RD1E;      // RD1
+            2'b00:   Src_A = FwdRD1E;   // RD1
             2'b01:   Src_A = 32'd0;     // 0 (lui)
             2'b11:   Src_A = PCE;       // PC (auipc, jal, jalr)
-            default: Src_A = RD1E;      // 2'b10 unused
+            default: Src_A = FwdRD1E;   // 2'b10 unused
         endcase
     end
 
     always @(*) begin
         case (ALUSrcBE)
-            2'b00:   Src_B = RD2E;      // RD2
+            2'b00:   Src_B = FwdRD2E;   // RD2
             2'b01:   Src_B = 32'd4;     // 4 (link address for jal, jalr)
             2'b11:   Src_B = ExtImmE;   // ExtImm
-            default: Src_B = RD2E;      // 2'b10 unused
+            default: Src_B = FwdRD2E;   // 2'b10 unused
         endcase
     end
 
     assign MCycleResult = MCycleResultSelE ? MCycleResult2 : MCycleResult1; // Result2 for mulh, mulhu, rem, remu. Result1 for mul, div, divu
     assign ResultE = MCycleStartE ? MCycleResult : ALUResultE;              // mul/div/rem write back the MCycle result instead of the ALU result
 
-    // Store data in Execute stage. Replace RD2E with the forwarded rs2 value once forwarding is added.
-    assign WriteDataE = RD2E;
+    // Store data in Execute stage
+    assign WriteDataE = FwdRD2E;
 
     // Instantiate ALU
     ALU ALU1(
@@ -354,8 +375,8 @@ module RV #(
                     RESET,
                     MCycleStartE,
                     MCycleOpE,
-                    RD1E,       // Replace with the forwarded rs1 value once forwarding is added
-                    RD2E,       // Replace with the forwarded rs2 value once forwarding is added
+                    FwdRD1E,
+                    FwdRD2E,
                     MCycleResult1,
                     MCycleResult2,
                     MCycleBusy
@@ -373,6 +394,7 @@ module RV #(
             MemWriteM  <= 1'b0;
             ResultM    <= 32'b0;
             WriteDataM <= 32'b0;
+            rs2M       <= 5'b0;
             rdM        <= 5'b0;
         end
         else begin
@@ -381,6 +403,7 @@ module RV #(
             MemWriteM  <= MemWriteE;
             ResultM    <= ResultE;
             WriteDataM <= WriteDataE;
+            rs2M       <= rs2E;
             rdM        <= rdE;
         end
     end
@@ -389,7 +412,7 @@ module RV #(
     assign ALUResult = ResultM;             // Address sent to the Wrapper; data comes back as ReadData_in
     assign MemRead = MemtoRegM;             // This is needed for the proper functionality of some devices such as UART CONSOLE
     assign ReadDataM = ReadData_in;         // Change datapath as appropriate if supporting lb/lbu/lh/lhu
-    assign WriteData_out = WriteDataM;      // Change datapath as appropriate if supporting sb/sh
+    assign WriteData_out = FwdWriteDataM;   // Change datapath as appropriate if supporting sb/sh
     assign MemWrite_out = {4{MemWriteM}};   // Change datapath as appropriate if supporting sb/sh
     assign SizeSel = 3'b010;                // Change this to be generated by the Decoder (control) as appropriate if
                                             // supporting lb/sb/lbu/lh/sh/lhu/lw/sw. Hint: funct3
@@ -424,11 +447,65 @@ module RV #(
     // Hazard control
     // ============================================================
 
-    // Multi-cycle operation (mul/div/rem) in Execute: hold F, D and E until MCycle is done,
-    // and insert bubbles into M so that older instructions in M and W can still complete.
-    assign StallF = MCycleBusy ;
-    assign StallD = MCycleBusy ;
+    // 1. Multi-cycle (mul/div/rem) in Execute: hold F, D and E until MCycle is done,
+    //    and insert bubbles into M so that older instructions in M and W can still complete.
+    //    (Combined into the stall/flush signals at the end of this section.)
+
+    // 2-3. RAW, producer 1 or 2 instructions ahead: forward into Execute.
+    //      10: from M (ResultM), 01: from W (WD), 00: no forwarding. M is newer, so it has priority.
+    always @(*) begin
+        if (RegWriteM & (rdM != 5'b0) & (rdM == rs1E))      ForwardAE = 2'b10;
+        else if (RegWriteW & (rdW != 5'b0) & (rdW == rs1E)) ForwardAE = 2'b01;
+        else                                                ForwardAE = 2'b00;
+    end
+
+    always @(*) begin
+        if (RegWriteM & (rdM != 5'b0) & (rdM == rs2E))      ForwardBE = 2'b10;
+        else if (RegWriteW & (rdW != 5'b0) & (rdW == rs2E)) ForwardBE = 2'b01;
+        else                                                ForwardBE = 2'b00;
+    end
+
+    always @(*) begin
+        case (ForwardAE)
+            2'b10:   FwdRD1E = ResultM;
+            2'b01:   FwdRD1E = WD;
+            default: FwdRD1E = RD1E;
+        endcase
+    end
+
+    always @(*) begin
+        case (ForwardBE)
+            2'b10:   FwdRD2E = ResultM;
+            2'b01:   FwdRD2E = WD;
+            default: FwdRD2E = RD2E;
+        endcase
+    end
+
+    // 4. RAW, producer 3 instructions ahead: RegFile is written at the end of the cycle
+    //    in which Decode reads it, so forward WD into Decode.
+    assign FwdRD1D = (RegWriteW & (rdW != 5'b0) & (rdW == rs1D)) ? WD : RD1D;
+    assign FwdRD2D = (RegWriteW & (rdW != 5'b0) & (rdW == rs2D)) ? WD : RD2D;
+
+    // 5. Mem-mem copy (lw followed by sw of the loaded register): forward the loaded data
+    //    from W into the store data in M. RegWriteW guards against MemtoReg being set by a non-load.
+    assign ForwardM      = MemWriteM & MemtoRegW & RegWriteW & (rdW != 5'b0) & (rs2M == rdW);
+    assign FwdWriteDataM = ForwardM ? ReadDataW : WriteDataM;
+
+    // 6. Load-use: lw in Execute, and the instruction in Decode needs its result.
+    //    Stall F and D for one cycle and insert a bubble into E; W-to-E forwarding then supplies the data.
+    //    sw rs2 is excluded since mem-mem copy forwarding (5) handles it.
+    assign lwStall = MemtoRegE & (rdE != 5'b0) &
+                     ((rs1D == rdE) | ((rs2D == rdE) & ~MemWriteD));
+
+    // 7. Control: taken branch or jump in Execute. Flush the two wrong-path instructions in D and E.
+    assign BranchTakenE = (PCSrcE != 3'b000);
+
+    // Stall / flush signals. 1, 6 and 7 need different instructions in Execute, so they never coincide.
+    assign StallF = MCycleBusy | lwStall ;
+    assign StallD = MCycleBusy | lwStall ;
     assign StallE = MCycleBusy ;
+    assign FlushD = BranchTakenE ;
+    assign FlushE = BranchTakenE | lwStall ;
     assign FlushM = MCycleBusy ;
 
 endmodule
