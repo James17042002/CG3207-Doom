@@ -12,7 +12,7 @@
 module top_nexys4ddr #(
     parameter CPU_CLK_DIV = 20,                 // 20 -> 50 MHz, 16 -> 62.5, 15 -> 66.7, 14 -> 71.4
     parameter BAUD        = 921600,
-    parameter BOOT_INIT   = "boot.mem"          // set to an absolute path by build.tcl
+    parameter BOOT_INIT   = "boot.mem"          // added to the Vivado project by build.tcl, found by name
 )(
     input         CLK100MHZ,
     input         CPU_RESETN,

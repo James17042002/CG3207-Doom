@@ -32,7 +32,8 @@ add_files -norecurse [list \
 set_property file_type {Memory Initialization Files} [get_files "$root/doom/sw/boot/boot.mem"]
 add_files -fileset constrs_1 -norecurse "$here/doom.xdc"
 set_property top top_nexys4ddr [current_fileset]
-set_property generic "CPU_CLK_DIV=$cpu_div BOOT_INIT=\"$root/doom/sw/boot/boot.mem\"" [current_fileset]
+# boot.mem is found by name because it is added to the project (as the course does with AA_IROM.mem)
+set_property generic "CPU_CLK_DIV=$cpu_div" [current_fileset]
 
 # ---------------- MIG (DDR2 controller) from doom/vivado/mig.prj ----------------
 create_ip -name mig_7series -vendor xilinx.com -library ip -module_name mig_ddr2

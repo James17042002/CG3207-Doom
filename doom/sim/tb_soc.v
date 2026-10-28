@@ -120,6 +120,17 @@ module tb_soc;
         if (pc_every > 0 && !rst && (cycle % pc_every) == 0)
             $display("[%0d] PC sample %08h", cycle, dut.pc);
 
+    // ---------------- stall statistics, printed with each OLED frame ----------------
+    integer st_i = 0, st_d = 0, st_mc = 0, st_lw = 0, st_br = 0, st_cyc = 0;
+    always @(posedge clk) if (!rst) begin
+        st_cyc = st_cyc + 1;
+        if (dut.imem_stall) st_i = st_i + 1;
+        else if (dut.dmem_stall) st_d = st_d + 1;
+        else if (dut.core.MCycleBusy) st_mc = st_mc + 1;
+        else if (dut.core.lwStall) st_lw = st_lw + 1;
+        else if (dut.core.BranchTakenE) st_br = st_br + 1;
+    end
+
     // ---------------- optional MMIO write trace ----------------
     reg mmio_trace;
     initial mmio_trace = $test$plusargs("mmio_trace");
@@ -181,7 +192,9 @@ module tb_soc;
                         $fwrite(ffd, "%c%c%c", fb[px][23:16], fb[px][15:8], fb[px][7:0]);
                     $fclose(ffd);
                 end
-                $display("[%0d] OLED frame %0d complete", cycle, frames);
+                $display("[%0d] OLED frame %0d complete  (since last: %0d cycles; I-miss %0d%%, D-miss %0d%%, mul/div %0d%%, load-use %0d%%, taken branch %0d%%)",
+                         cycle, frames, st_cyc, st_i*100/st_cyc, st_d*100/st_cyc, st_mc*100/st_cyc, st_lw*100/st_cyc, st_br*100/st_cyc);
+                st_i = 0; st_d = 0; st_mc = 0; st_lw = 0; st_br = 0; st_cyc = 0;
                 if (max_frames != 0 && frames >= max_frames) begin
                     $display("SIM STOP after %0d frames", frames);
                     $finish;

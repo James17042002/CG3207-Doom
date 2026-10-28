@@ -12,6 +12,7 @@
 //   SW1 flipped                 Use (open doors, flip switches)
 //   SW2 up                      crop the status bar (game view fills the OLED)
 //   SW3 up                      smoother downscaling (2x2 average, slower)
+//   SW4 up when Doom starts     skip the title screen and menus: start E1M1 directly
 // PC terminal (doom/tools/load.py keeps the terminal open):
 //   arrows or WASD move, F or Ctrl fire, Space or E use, Enter, Esc or Q menu, Y/N answers,
 //   1-7 weapons, Tab map.
@@ -179,8 +180,9 @@ int DG_GetKey(int *pressed, unsigned char *key) {
 
 // ---------------- main ----------------
 int main(void) {
-    static char *argv[] = { "doom", "-iwad", "doom.wad", NULL };
+    static char *argv[] = { "doom", "-iwad", "doom.wad", "-warp", "1", "1", NULL };
+    int argc = (DIPS & 0x10) ? 6 : 3;      // SW4 up at start: go straight into E1M1
     printf("\nDoom on the CG3207 RISC-V processor\n");
-    doomgeneric_Create(3, argv);
+    doomgeneric_Create(argc, argv);
     for (;;) doomgeneric_Tick();
 }
