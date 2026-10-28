@@ -93,6 +93,7 @@ module RV #(
     wire        MCycleStartD ;
     wire [1:0]  MCycleOpD ;
     wire        MCycleResultSelD ;
+    wire        MCycleSUD ;
     // RegFile read ports
     wire [31:0] RD1D ;
     wire [31:0] RD2D ;
@@ -112,6 +113,7 @@ module RV #(
     reg         MCycleStartE ;
     reg  [1:0]  MCycleOpE ;
     reg         MCycleResultSelE ;
+    reg         MCycleSUE ;
     // Pipeline register D -> E: data
     reg  [31:0] PCE ;
     reg  [31:0] RD1E ;
@@ -257,7 +259,8 @@ module RV #(
                     ALUControlD,
                     MCycleStartD,
                     MCycleOpD,
-                    MCycleResultSelD
+                    MCycleResultSelD,
+                    MCycleSUD
                 );
 
     // Instantiate RegFile (read in Decode; write port WE/rdW/WD is driven from Writeback)
@@ -297,6 +300,7 @@ module RV #(
             MCycleStartE     <= 1'b0;
             MCycleOpE        <= 2'b0;
             MCycleResultSelE <= 1'b0;
+            MCycleSUE        <= 1'b0;
             PCE         <= 32'b0;
             RD1E        <= 32'b0;
             RD2E        <= 32'b0;
@@ -317,6 +321,7 @@ module RV #(
             MCycleStartE     <= MCycleStartD;
             MCycleOpE        <= MCycleOpD;
             MCycleResultSelE <= MCycleResultSelD;
+            MCycleSUE        <= MCycleSUD;
             PCE         <= PCD;
             RD1E        <= FwdRD1D;
             RD2E        <= FwdRD2D;
@@ -375,6 +380,7 @@ module RV #(
                     RESET,
                     MCycleStartE,
                     MCycleOpE,
+                    MCycleSUE,
                     FwdRD1E,
                     FwdRD2E,
                     MCycleResult1,

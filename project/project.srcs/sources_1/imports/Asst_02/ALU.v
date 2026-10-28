@@ -55,7 +55,7 @@ module ALU(
 	
 	assign S_wider = Src_A_comp + Src_B_comp + C_0 ;
 	
-	always@(Src_A, Src_B, ALUControl, S_wider, ShOut) begin
+	always@(*) begin   // @(*): N, V and C are also read here (an explicit list caused a sim/synth mismatch for slt/sltu)
         // default values; help avoid latches
 		C_0 = 0 ; 
 		Src_A_comp = {1'b0, Src_A} ;

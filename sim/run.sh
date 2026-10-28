@@ -4,6 +4,7 @@
 #   sim/run.sh IROM.mem [DMEM.mem] [plusargs...]
 #
 # Example: sim/run.sh build/test.irom.mem build/test.dmem.mem +cycles=50000 +quiet
+# Extra iverilog flags can be passed in $SIM_DEFINES (e.g. SIM_DEFINES=-DSIM_MEM_DEPTH_BITS=14).
 # The RTL is taken from the live Vivado sources (project/project.srcs/sources_1/imports).
 set -euo pipefail
 
@@ -22,7 +23,7 @@ cd "$BUILD"
 cp "$IROM" AA_IROM.mem
 if [ -n "$DMEM" ]; then cp "$DMEM" AA_DMEM.mem; else : > AA_DMEM.mem; fi
 
-iverilog -g2012 -o tb.vvp -s tb_wrapper \
+iverilog -g2012 ${SIM_DEFINES:-} -o tb.vvp -s tb_wrapper \
     "$ROOT/sim/tb_wrapper.v" \
     "$SRC"/Asst_02/{Wrapper,RV,ALU,Decoder,Extend,PC_Logic,ProgramCounter,RegFile,Shifter}.v \
     "$SRC"/Asst_03/MCycle.v

@@ -73,3 +73,4 @@ project/project.xpr
 # --- doom branch: simulation and software build outputs ---
 sim/build/
 sw/build/
+tests/riscv-tests/build/

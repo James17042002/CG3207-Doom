@@ -3,7 +3,7 @@
 Read this first when resuming work. Newest entries at the top.
 
 ## Status
-Current milestone: **1 — Correctness** (not started)
+Current milestone: **2 — new SoC (block RAM, caches, stall)**
 
 ## How to build and simulate
 - Tools (Ubuntu): `apt-get install iverilog verilator gcc-riscv64-unknown-elf picolibc-riscv64-unknown-elf`
@@ -15,6 +15,16 @@ Current milestone: **1 — Correctness** (not started)
   To use a program on the board, copy the .mem files over `AA_IROM.mem` / `AA_DMEM.mem`.
 
 ## Log
+### 2026-10-28 — Milestone 1 done
+- `tests/riscv-tests/run.sh` builds rv32ui + rv32um from riscv-tests with a minimal env
+  (`tests/riscv-tests/env/riscv_test.h`) and runs each on the core. 48/48 pass
+  (fence_i, ma_data skipped).
+- Bugs found and fixed:
+  - ALU.v: explicit sensitivity list missed N/V/C, so slt/slti/sltiu/sltu gave wrong results in
+    simulation (sim/synth mismatch). Now `always @(*)`.
+  - MCycle.v: signed division of a negative number by zero returned 1 instead of -1.
+  - mulhsu implemented (new MCycle input MulSU, Decoder output MCycleSU).
+- Wrapper.v: `SIM_MEM_DEPTH_BITS` define enlarges IROM/DMEM in simulation only.
 ### 2026-10-28 — Milestone 0 done
 - Created `doom` branch, `sim/tb_wrapper.v` + `sim/run.sh` (Icarus), `sw/common/` (crt0, linker
   script, MMIO header, ELF -> .mem converter, build script).

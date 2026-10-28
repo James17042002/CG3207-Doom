@@ -47,7 +47,8 @@ module Decoder(
     					// It is the same as sub for branches, and add for all others not mentioned in the line above.
     output reg MCycleStart,		// Asserted by mul, mulh, mulhu, div, divu, rem, remu. Also tells the datapath to write back the MCycle result instead of ALUResult
     output reg [1:0] MCycleOp,	// 00 for signed mul, 01 for unsigned mul, 10 for signed div, 11 for unsigned div
-    output reg MCycleResultSel	// 0 for Result1 (mul, div, divu), 1 for Result2 (mulh, mulhu, rem, remu)
+    output reg MCycleResultSel,	// 0 for Result1 (mul, div, divu), 1 for Result2 (mulh, mulhsu, mulhu, rem, remu)
+    output reg MCycleSU		// 1 for mulhsu (rs1 signed x rs2 unsigned)
     );
 // Change wire to reg if assigned inside a procedural (always) block. However, where it is easy enough, use assign instead of always.
 // A 2-1 multiplexing can be done easily using an assign with a ternary operator
@@ -68,6 +69,7 @@ module Decoder(
         MCycleStart = 0;
         MCycleOp = 2'b00;
         MCycleResultSel = 0;
+        MCycleSU = 0;
         if (Opcode == 7'b0110011) begin
             // DP Reg
             PCS = 2'b00;
@@ -85,15 +87,12 @@ module Decoder(
                 case (Funct3)
                     3'b000: begin MCycleOp = 2'b01; MCycleResultSel = 0; end // mul: low word is the same signed or unsigned, so use the faster unsigned mode
                     3'b001: begin MCycleOp = 2'b00; MCycleResultSel = 1; end // mulh
+                    3'b010: begin MCycleOp = 2'b00; MCycleResultSel = 1; MCycleSU = 1; end // mulhsu
                     3'b011: begin MCycleOp = 2'b01; MCycleResultSel = 1; end // mulhu
                     3'b100: begin MCycleOp = 2'b10; MCycleResultSel = 0; end // div
                     3'b101: begin MCycleOp = 2'b11; MCycleResultSel = 0; end // divu
                     3'b110: begin MCycleOp = 2'b10; MCycleResultSel = 1; end // rem
                     3'b111: begin MCycleOp = 2'b11; MCycleResultSel = 1; end // remu
-                    default: begin // mulhsu not supported: treat as a no-op
-                        MCycleStart = 0;
-                        RegWrite = 0;
-                    end
                 endcase
             end
 

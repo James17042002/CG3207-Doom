@@ -55,6 +55,7 @@ module test_MCycle(
         RESET, 
         Start, 
         MCycleOp, 
+        1'b0,     // MulSU
         Operand1, 
         Operand2, 
         Result1, 
