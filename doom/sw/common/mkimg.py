@@ -3,6 +3,8 @@
 
   mkimg.py --boot boot.mem --ddr ddr.mem [--boot-words 4096] [--ddr-lines N] inputs...
 
+--wad FILE places a Doom WAD the way doom/tools/load.py does: header 'WADL' + size at 0x84000000,
+data at 0x84000010.
 Each input is either an ELF file (its PT_LOAD segments are placed at their physical addresses)
 or FILE@ADDR for a raw binary (ADDR in hex, e.g. doom1.wad@0x84000000).
 Boot RAM (0x00000000..) -> 32-bit words, one per line.
@@ -40,11 +42,16 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--boot'); ap.add_argument('--ddr')
     ap.add_argument('--boot-words', type=int, default=4096)
+    ap.add_argument('--wad')
     ap.add_argument('inputs', nargs='+')
     a = ap.parse_args()
     boot = bytearray(a.boot_words * 4)
     ddr = {}                                   # line index -> bytearray(16)
-    for addr, data in load_inputs(a.inputs):
+    segs = load_inputs(a.inputs)
+    if a.wad:
+        wad = open(a.wad, 'rb').read()
+        segs += [(0x84000000, b'WADL' + struct.pack('<III', len(wad), 0, 0)), (0x84000010, wad)]
+    for addr, data in segs:
         if addr < 0x10000:
             if addr + len(data) > len(boot): raise SystemExit("boot image too large for boot RAM")
             boot[addr:addr + len(data)] = data

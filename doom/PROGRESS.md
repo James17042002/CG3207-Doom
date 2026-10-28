@@ -3,7 +3,7 @@
 Read this first when resuming work. Newest entries at the top.
 
 ## Status
-Current milestone: **2 — new SoC (block RAM, caches, stall)**
+Current milestone: **7 — Doom in simulation** (milestones 2-6 done in simulation; board steps pending)
 
 ## How to build and simulate
 - Tools (Ubuntu): `apt-get install iverilog verilator gcc-riscv64-unknown-elf picolibc-riscv64-unknown-elf`
@@ -15,6 +15,17 @@ Current milestone: **2 — new SoC (block RAM, caches, stall)**
   To use a program on the board, copy the .mem files over `AA_IROM.mem` / `AA_DMEM.mem`.
 
 ## Log
+### 2026-10-28 — SoC, bootloader, Doom port (milestones 2-6, simulation)
+- New SoC in `doom/rtl` (see `doom/README.md`): rv_core with whole-pipeline stall, boot RAM,
+  16 KB I/D caches, MIG bridge with clock crossing, MMIO (UART FIFOs, timers, OLED, LEDs...).
+- riscv-tests pass on the SoC from DDR2 through the caches (`doom/sim/rvtests/run.sh`, 48/48).
+- `doom/sw/tests/memtest.c` passes in Verilator (9.3 M cycles).
+- Bootloader + `doom/tools/load.py`: program loaded over the UART and run, in simulation.
+- Board files: `rtl/top_nexys4ddr.v`, `vivado/doom.xdc`, `vivado/mig.prj` (from Digilent's
+  board file, native UI, strict ordering), `vivado/build.tcl`, `vivado/program.tcl`.
+  Lint-clean in Verilator; synthesises in Yosys (~8.3k LUT, 5k FF, 16 BRAM36). Not yet run in Vivado.
+- Doom: doomgeneric (fetched by `sw/doom/fetch.sh`) + `sw/doom/doomgeneric_cg3207.c` + `syscalls.c`
+  (picolibc; WAD exposed as a read-only file). Builds; running in Verilator with Freedoom.
 ### 2026-10-28 — Milestone 1 done
 - `tests/riscv-tests/run.sh` builds rv32ui + rv32um from riscv-tests with a minimal env
   (`tests/riscv-tests/env/riscv_test.h`) and runs each on the core. 48/48 pass

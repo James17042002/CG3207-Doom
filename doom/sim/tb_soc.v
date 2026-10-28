@@ -10,6 +10,8 @@
 //   +dip=HEX +pb=HEX switch / button values
 //   +quiet           do not log LED / 7-segment changes
 //   +mmio_trace      log every peripheral write (address, data)
+//   +pc_every=N      print the PC every N cycles (crude profiler)
+//   +trace_from=N    print pipeline state every cycle from cycle N
 // The program ends the simulation by writing its exit code to 0xFFFF00FC (0 = pass).
 module tb_soc;
     parameter CLK_FREQ_HZ = 50000000;
@@ -110,6 +112,13 @@ module tb_soc;
             $display("[%0d] F=%08h D=%08h(%08h) E=%08h M=%08h hold=%b is=%b ds=%b | rdE=%0d rdM=%0d rdW=%0d WE=%b WD=%08h fA=%b fB=%b",
                 cycle, dut.pc, dut.core.PCD, dut.core.InstrD, dut.core.PCE, dut.addr_m, dut.hold, dut.imem_stall, dut.dmem_stall,
                 dut.core.rdE, dut.core.rdM, dut.core.rdW, dut.core.WE, dut.core.WD, dut.core.ForwardAE, dut.core.ForwardBE);
+
+    // ---------------- optional PC sampling (+pc_every=N): where is the program spending time? ----------------
+    integer pc_every;
+    initial if (!$value$plusargs("pc_every=%d", pc_every)) pc_every = 0;
+    always @(posedge clk)
+        if (pc_every > 0 && !rst && (cycle % pc_every) == 0)
+            $display("[%0d] PC sample %08h", cycle, dut.pc);
 
     // ---------------- optional MMIO write trace ----------------
     reg mmio_trace;

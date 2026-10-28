@@ -77,3 +77,4 @@ tests/riscv-tests/build/
 doom/sim/build-*/
 doom/sim/rvtests/build/
 doom/sw/build/
+doom/sw/doom/doomgeneric/
