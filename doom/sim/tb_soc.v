@@ -14,7 +14,7 @@
 module tb_soc;
     parameter CLK_FREQ_HZ = 50000000;
     parameter BAUD        = 3125000;        // fast UART in simulation (16 clocks per bit)
-    parameter LINE_BITS   = 16;             // DDR model size: 2**LINE_BITS x 16 bytes
+    parameter LINE_BITS   = 23;             // DDR model size: 2**LINE_BITS x 16 bytes (23 = 128 MB; use -D LINE_BITS=16 with Icarus)
     parameter ICACHE_IDX  = 10;
     parameter DCACHE_IDX  = 10;
 
