@@ -74,3 +74,6 @@ project/project.xpr
 sim/build/
 sw/build/
 tests/riscv-tests/build/
+doom/sim/build-*/
+doom/sim/rvtests/build/
+doom/sw/build/
