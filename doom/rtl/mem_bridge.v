@@ -55,29 +55,33 @@ module mem_bridge (
     reg [15:0]   r_wmask = 0;
     reg [127:0]  u_rdata = 0;   // ui domain, stable while not busy
 
+    // A CPU reset can arrive while a transaction is in flight in the ui_clk domain. That
+    // transaction still completes there, so keep waiting for its acknowledge ("orphan") and do
+    // not hand it to the (now reset) caches; otherwise the next request would get its acknowledge.
+    reg orphan = 1'b0;
     wire done = busy & (ack_s2 != ack_seen);
-    assign i_ack = done & ~owner;
-    assign d_ack = done &  owner;
+    assign i_ack = done & ~orphan & ~rst & ~owner;
+    assign d_ack = done & ~orphan & ~rst &  owner;
     assign rdata = u_rdata;
     assign calib_done = cal_s2;
 
     always @(posedge clk) begin
         ack_s1 <= ack_t;  ack_s2 <= ack_s1;
         cal_s1 <= init_calib_complete; cal_s2 <= cal_s1;
-        if (rst) begin
-            busy <= 1'b0;
-            ack_seen <= ack_s2;
-        end else if (!busy) begin
-            if (d_req) begin
+        if (!busy) begin
+            if (!rst && d_req) begin
                 owner <= 1'b1; r_we <= d_we; r_addr <= d_addr; r_wdata <= d_wdata; r_wmask <= d_wmask;
                 req_t <= ~req_t; busy <= 1'b1;
-            end else if (i_req) begin
+            end else if (!rst && i_req) begin
                 owner <= 1'b0; r_we <= 1'b0; r_addr <= i_addr; r_wmask <= 16'h0;
                 req_t <= ~req_t; busy <= 1'b1;
             end
         end else if (done) begin
             ack_seen <= ~ack_seen;
             busy <= 1'b0;
+            orphan <= 1'b0;
+        end else if (rst) begin
+            orphan <= 1'b1;
         end
     end
 

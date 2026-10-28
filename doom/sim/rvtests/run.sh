@@ -15,7 +15,7 @@ pass=0; fail=0; failed=""
 for t in $TESTS; do
   [[ "$SKIP" == *" $t "* ]] && continue
   src=$(ls "$RT"/isa/rv32ui/$t.S "$RT"/isa/rv32um/$t.S 2>/dev/null | head -1)
-  riscv64-unknown-elf-gcc -march=rv32im -mabi=ilp32 -nostdlib -nostartfiles -T "$HERE/link.ld" \
+  riscv64-unknown-elf-gcc -march=rv32im -mabi=ilp32 -nostdlib -nostartfiles -Wl,--no-warn-rwx-segments -T "$HERE/link.ld" \
       -I"$ROOT/tests/riscv-tests/env" -I"$RT/isa/macros/scalar" -o "$OUT/$t.elf" "$src" \
       || { fail=$((fail+1)); failed="$failed $t(build)"; continue; }
   python3 "$ROOT/doom/sw/common/mkimg.py" --ddr "$OUT/$t.ddr.mem" "$OUT/$t.elf"

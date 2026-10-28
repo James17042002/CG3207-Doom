@@ -6,8 +6,10 @@
 // pipeline is held), so the line is at the RAM output when the access reaches Memory.
 // Stores write the RAM in Memory on the cycle the instruction advances; a store immediately
 // followed by a load of the same word is handled by a bypass register (the RAM is read-first).
+// Tag + valid + dirty bits live in distributed RAM (asynchronous read with the Memory-stage
+// address); after reset they are cleared one line per cycle.
 module dcache #(
-    parameter IDX = 10                  // 2**IDX lines of 16 bytes (10 -> 16 KB)
+    parameter IDX = 12                  // 2**IDX lines of 16 bytes (12 -> 64 KB)
 )(
     input             clk,
     input             rst,
@@ -31,18 +33,22 @@ module dcache #(
     input     [127:0] ack_rdata
 );
     localparam TAGW = 27 - 4 - IDX;
-    localparam S_IDLE = 3'd0, S_VICTIM = 3'd1, S_WB = 3'd2, S_FILL = 3'd3, S_REREAD = 3'd4, S_UNC = 3'd5;
+    localparam S_IDLE = 3'd0, S_VICTIM = 3'd1, S_WB = 3'd2, S_FILL = 3'd3, S_REREAD = 3'd4, S_UNC = 3'd5,
+               S_INIT = 3'd6;
 
-    reg [2:0] state = S_IDLE;
-    reg [TAGW-1:0] tags [0:(1<<IDX)-1];
-    reg [(1<<IDX)-1:0] valid = 0, dirty = 0;
+    reg [2:0] state = S_INIT;
+    reg [IDX-1:0] init_idx = 0;
+    (* ram_style = "distributed" *) reg [TAGW+1:0] meta [0:(1<<IDX)-1];  // {valid, dirty, tag}
 
     wire we_m   = |be_m;
     wire access = re_m | we_m;
     wire [IDX-1:0]  idx = addr_m[IDX+3:4];
     wire [TAGW-1:0] tag = addr_m[26:IDX+4];
     wire [1:0]      wsel = addr_m[3:2];
-    wire hit  = valid[idx] && (tags[idx] == tag);
+    wire [TAGW+1:0] m = meta[idx];
+    wire m_valid = m[TAGW+1], m_dirty = m[TAGW];
+    wire [TAGW-1:0] m_tag = m[TAGW-1:0];
+    wire hit  = m_valid && (m_tag == tag);
     wire miss = cached_m & access & ~hit;
 
     // Uncached access: done once, result held until the instruction leaves Memory
@@ -50,7 +56,9 @@ module dcache #(
     reg [31:0] unc_rdata = 0;
     wire unc_pending = uncached_m & access & ~unc_done;
 
-    assign stall = (state != S_IDLE) | miss | unc_pending;
+    // While the metadata is being cleared after reset, only DDR2 accesses wait.
+    assign stall = (state == S_INIT) ? ((cached_m | uncached_m) & access)
+                                     : ((state != S_IDLE) | miss | unc_pending);
 
     // ---------------- Data array ----------------
     wire [127:0] line;
@@ -84,19 +92,35 @@ module dcache #(
                                byp_hit & byp_be[0] ? byp_data[7:0]   : raw_word[7:0]};
     assign rdata_m = uncached_m ? unc_rdata : cached_word;
 
+    // metadata: one write port (clear during S_INIT, mark dirty on a store hit, set on fill)
+    wire fill_done = (state == S_FILL) & ack;
+    reg              meta_we;
+    reg  [IDX-1:0]   meta_waddr;
+    reg  [TAGW+1:0]  meta_wdata;
+    always @(*) begin
+        meta_we = 1'b1; meta_waddr = idx; meta_wdata = {2'b10, tag};
+        if (state == S_INIT)  begin meta_waddr = init_idx; meta_wdata = 0; end
+        else if (store_hit)   meta_wdata = {2'b11, tag};
+        else if (!fill_done)  meta_we = 1'b0;
+    end
+    always @(posedge clk) if (meta_we) meta[meta_waddr] <= meta_wdata;
+
     // ---------------- Control ----------------
     always @(posedge clk) begin
         if (rst) begin
-            state <= S_IDLE; req <= 1'b0; valid <= 0; dirty <= 0; unc_done <= 1'b0; byp_valid <= 1'b0;
+            state <= S_INIT; init_idx <= 0; req <= 1'b0; unc_done <= 1'b0; byp_valid <= 1'b0;
         end else begin
             if (~hold) unc_done <= 1'b0;    // the instruction leaves Memory
 
             if (store_hit) begin
-                dirty[idx] <= 1'b1;
                 byp_valid <= 1'b1; byp_addr <= addr_m[31:2]; byp_be <= be_m; byp_data <= wdata_m;
             end
 
             case (state)
+                S_INIT: begin
+                    init_idx <= init_idx + 1;
+                    if (&init_idx) state <= S_IDLE;
+                end
                 S_IDLE:
                     if (miss) state <= S_VICTIM;    // RAM now reads the line at idx (hold = 1)
                     else if (unc_pending) begin
@@ -107,8 +131,8 @@ module dcache #(
                     end
                 S_VICTIM: begin
                     req <= 1'b1;
-                    if (valid[idx] & dirty[idx]) begin
-                        req_we <= 1'b1; req_addr <= {tags[idx], idx}; req_wdata <= line; req_wmask <= 16'hFFFF;
+                    if (m_valid & m_dirty) begin
+                        req_we <= 1'b1; req_addr <= {m_tag, idx}; req_wdata <= line; req_wmask <= 16'hFFFF;
                         state <= S_WB;
                     end else begin
                         req_we <= 1'b0; req_addr <= {tag, idx};
@@ -120,7 +144,6 @@ module dcache #(
                 S_FILL:
                     if (ack) begin
                         req <= 1'b0;
-                        tags[idx] <= tag; valid[idx] <= 1'b1; dirty[idx] <= 1'b0;
                         byp_valid <= 1'b0;
                         state <= S_REREAD;
                     end

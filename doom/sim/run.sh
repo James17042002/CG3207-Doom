@@ -22,7 +22,7 @@ done
 BOOT="$(realpath "${POS[0]}")"; DDR="$(realpath "${POS[1]}")"
 set -- "${PLUS[@]:-}"
 
-SRCS=("$HERE/tb_soc.v" "$HERE/mig_model.v" "$ROOT"/doom/rtl/{soc,rv_core,sdp_ram,icache,dcache,mem_bridge,mmio,uart}.v
+SRCS=("$HERE/tb_soc.v" "$HERE/mig_model.v" "$ROOT"/doom/rtl/{soc,rv_core,muldiv,sdp_ram,icache,dcache,mem_bridge,mmio,uart}.v
       "$CORE"/Asst_02/{ALU,Decoder,Extend,PC_Logic,RegFile,Shifter}.v "$CORE"/Asst_03/MCycle.v)
 TAG=$(printf '%s' "${PARAMS[*]:-}" | md5sum | cut -c1-8)
 BUILD="$HERE/build-$SIM-$TAG"; mkdir -p "$BUILD"

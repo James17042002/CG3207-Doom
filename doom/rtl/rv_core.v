@@ -390,7 +390,8 @@ module rv_core #(
                 );
 
     // Instantiate MCycle
-    MCycle #(.width(32)) MCycle1(
+    // muldiv.v: DSP multiplier for mul*, course MCycle.v for div/rem (same interface as MCycle)
+    muldiv MCycle1(
                     CLK,
                     RESET,
                     MCycleStartE,

@@ -14,8 +14,8 @@ module soc #(
     parameter BAUD        = 921600,
     parameter BOOT_INIT   = "boot.mem",     // $readmemh image for the boot RAM (32-bit words)
     parameter BOOT_AW     = 12,             // boot RAM words = 2**BOOT_AW (12 -> 16 KB)
-    parameter ICACHE_IDX  = 10,             // 2**IDX lines of 16 B (10 -> 16 KB)
-    parameter DCACHE_IDX  = 10
+    parameter ICACHE_IDX  = 12,             // 2**IDX lines of 16 B (12 -> 64 KB)
+    parameter DCACHE_IDX  = 12
 )(
     input              clk,
     input              rst,

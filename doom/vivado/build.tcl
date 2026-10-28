@@ -23,7 +23,7 @@ set_property target_language Verilog [current_project]
 # ---------------- Sources ----------------
 add_files -norecurse [list \
     "$root/doom/rtl/top_nexys4ddr.v" "$root/doom/rtl/soc.v" "$root/doom/rtl/rv_core.v" \
-    "$root/doom/rtl/sdp_ram.v" "$root/doom/rtl/icache.v" "$root/doom/rtl/dcache.v" \
+    "$root/doom/rtl/muldiv.v" "$root/doom/rtl/sdp_ram.v" "$root/doom/rtl/icache.v" "$root/doom/rtl/dcache.v" \
     "$root/doom/rtl/mem_bridge.v" "$root/doom/rtl/mmio.v" "$root/doom/rtl/uart.v" \
     "$core/Asst_02/ALU.v" "$core/Asst_02/Decoder.v" "$core/Asst_02/Extend.v" "$core/Asst_02/PC_Logic.v" \
     "$core/Asst_02/RegFile.v" "$core/Asst_02/Shifter.v" "$core/Asst_03/MCycle.v" \

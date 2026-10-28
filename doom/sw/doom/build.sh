@@ -18,11 +18,16 @@ SRCS="dummy am_map doomdef doomstat dstrings d_event d_items d_iwad d_loop d_mai
       p_telept p_tick p_user r_bsp r_data r_draw r_main r_plane r_segs r_sky r_things sha1 sounds statdump
       st_lib st_stuff s_sound tables v_video wi_stuff w_checksum w_file w_main w_wad z_zone
       i_input i_video doomgeneric"
+# i_video.c: skip the per-frame copy into DG_ScreenBuffer when it is the same buffer
+# (doomgeneric_cg3207.c points DG_ScreenBuffer at I_VideoBuffer).
+sed 's/memcpy(line_out, line_in, SCREENWIDTH);/if (line_out != line_in) memcpy(line_out, line_in, SCREENWIDTH);/' \
+    "$DG/i_video.c" > "$OBJ/i_video_patched.c"
 OBJS=()
 for s in $SRCS; do
   o="$OBJ/$s.o"; OBJS+=("$o")
-  if [ ! -f "$o" ] || [ "$DG/$s.c" -nt "$o" ]; then
-    riscv64-unknown-elf-gcc "${CFLAGS[@]}" -c "$DG/$s.c" -o "$o" &
+  src="$DG/$s.c"; [ "$s" = i_video ] && src="$OBJ/i_video_patched.c"
+  if [ ! -f "$o" ] || [ "$src" -nt "$o" ]; then
+    riscv64-unknown-elf-gcc "${CFLAGS[@]}" -c "$src" -o "$o" &
     while [ "$(jobs -r | wc -l)" -ge "$(nproc)" ]; do wait -n; done
   fi
 done

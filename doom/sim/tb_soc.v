@@ -9,6 +9,7 @@
 //   +max_frames=N    stop after N OLED frames
 //   +dip=HEX +pb=HEX switch / button values
 //   +quiet           do not log LED / 7-segment changes
+//   +reset_at=N      assert the CPU reset again at cycle N (the MIG keeps running)
 //   +mmio_trace      log every peripheral write (address, data)
 //   +pc_every=N      print the PC every N cycles (crude profiler)
 //   +trace_from=N    print pipeline state every cycle from cycle N
@@ -17,8 +18,8 @@ module tb_soc;
     parameter CLK_FREQ_HZ = 50000000;
     parameter BAUD        = 3125000;        // fast UART in simulation (16 clocks per bit)
     parameter LINE_BITS   = 23;             // DDR model size: 2**LINE_BITS x 16 bytes (23 = 128 MB; use -D LINE_BITS=16 with Icarus)
-    parameter ICACHE_IDX  = 10;
-    parameter DCACHE_IDX  = 10;
+    parameter ICACHE_IDX  = 12;
+    parameter DCACHE_IDX  = 12;
 
     reg clk = 1'b0, ui_clk = 1'b0;
     always #10    clk    = ~clk;            // 50 MHz CPU clock
@@ -66,7 +67,7 @@ module tb_soc;
 
     localparam CPB = CLK_FREQ_HZ / BAUD;    // clocks per UART bit
 
-    integer max_cycles, cycle = 0, max_frames, frames = 0;
+    integer max_cycles, cycle = 0, max_frames, frames = 0, reset_at;
     reg quiet;
     reg [1023:0] frame_prefix;
     reg have_frames;
@@ -82,6 +83,14 @@ module tb_soc;
         quiet = $test$plusargs("quiet");
         repeat (5) @(posedge clk);
         rst = 1'b0;
+        // +reset_at=N: press CPU reset again after N cycles (tests reset during DDR2 traffic)
+        if ($value$plusargs("reset_at=%d", reset_at)) begin
+            wait (cycle >= reset_at);
+            @(posedge clk); rst = 1'b1;
+            $display("[%0d] tb: CPU reset pressed", cycle);
+            repeat (5) @(posedge clk);
+            rst = 1'b0;
+        end
     end
 
     // ---------------- cycle limit and exit ----------------

@@ -33,7 +33,7 @@ int main(void) {
     for (int i = 0; i < 2048; i++) if (h[i] != (uint16_t)(i * 13 + 1)) { check(0, "half", h[i], (uint16_t)(i*13+1)); break; }
     for (int i = 0; i < 4096; i += 4) if (bytes[i] != (uint8_t)((i/2) * 13 + 1)) { check(0, "half-byte", bytes[i], (uint8_t)((i/2)*13+1)); break; }
     // 4. store then load of a conflicting line (same index, different tag): forces write-back
-    volatile uint32_t *a = (volatile uint32_t *)0x80200000, *b = (volatile uint32_t *)0x80204000; // 16 KB apart
+    volatile uint32_t *a = (volatile uint32_t *)0x80200000, *b = (volatile uint32_t *)0x80210000; // 64 KB apart (cache size)
     for (int i = 0; i < 100; i++) { a[i] = i; b[i] = ~i; if (a[i] != (uint32_t)i || b[i] != (uint32_t)~i) { check(0, "conflict", a[i], i); break; } }
     // 5. uncached alias: write through 0xC..., read cold lines through 0x8...
     volatile uint32_t *u = (volatile uint32_t *)(DDR_UNCACHED + 0x00300000), *c = (volatile uint32_t *)(DDR_CACHED + 0x00300000);

@@ -2,10 +2,11 @@
 // Direct-mapped instruction cache for the DDR2 region. 16-byte lines (one memory transaction).
 //
 // Data array: block RAM read with the NEXT fetch address (addr_next), so the line for 'pc' is at the
-// RAM output during Fetch. Tags/valid bits are read asynchronously with 'pc'.
+// RAM output during Fetch. Tag + valid bit live in distributed RAM, read asynchronously with 'pc';
+// after reset they are cleared one line per cycle (only stalls fetches from DDR2 meanwhile).
 // Miss: request the line, write it, wait one cycle for the RAM to re-read it, then continue.
 module icache #(
-    parameter IDX = 10                  // 2**IDX lines of 16 bytes (10 -> 16 KB)
+    parameter IDX = 12                  // 2**IDX lines of 16 bytes (12 -> 64 KB)
 )(
     input             clk,
     input             rst,
@@ -21,17 +22,18 @@ module icache #(
     input     [127:0] ack_rdata
 );
     localparam TAGW = 27 - 4 - IDX;
-    localparam S_IDLE = 2'd0, S_FILL = 2'd1, S_REREAD = 2'd2;
+    localparam S_IDLE = 2'd0, S_FILL = 2'd1, S_REREAD = 2'd2, S_INIT = 2'd3;
 
-    reg [1:0] state = S_IDLE;
-    reg [TAGW-1:0] tags [0:(1<<IDX)-1];
-    reg [(1<<IDX)-1:0] valid = 0;
+    reg [1:0] state = S_INIT;
+    reg [IDX-1:0] init_idx = 0;
+    (* ram_style = "distributed" *) reg [TAGW:0] meta [0:(1<<IDX)-1];    // {valid, tag}
 
     wire [IDX-1:0]  idx = pc[IDX+3:4];
     wire [TAGW-1:0] tag = pc[26:IDX+4];
-    wire hit  = valid[idx] && (tags[idx] == tag);
+    wire [TAGW:0]   m   = meta[idx];
+    wire hit  = m[TAGW] && (m[TAGW-1:0] == tag);
     wire miss = cached & ~hit;
-    assign stall = (state != S_IDLE) | miss;
+    assign stall = cached & ((state != S_IDLE) | ~hit);
 
     wire [127:0] line;
     reg          fill_we = 1'b0;
@@ -43,14 +45,23 @@ module icache #(
 
     always @(*) fill_we = (state == S_FILL) & ack;
 
+    // metadata: one write port (clear during S_INIT, set on fill)
+    wire            meta_we    = (state == S_INIT) | fill_we;
+    wire [IDX-1:0]  meta_waddr = (state == S_INIT) ? init_idx : idx;
+    wire [TAGW:0]   meta_wdata = (state == S_INIT) ? {(TAGW+1){1'b0}} : {1'b1, tag};
+    always @(posedge clk) if (meta_we) meta[meta_waddr] <= meta_wdata;
+
     always @(posedge clk) begin
         if (rst) begin
-            state <= S_IDLE; req <= 1'b0; valid <= 0;
+            state <= S_INIT; init_idx <= 0; req <= 1'b0;
         end else case (state)
+            S_INIT:   begin
+                          init_idx <= init_idx + 1;
+                          if (&init_idx) state <= S_IDLE;
+                      end
             S_IDLE:   if (miss) begin req <= 1'b1; req_addr <= {tag, idx}; state <= S_FILL; end
             S_FILL:   if (ack) begin
                           req <= 1'b0;
-                          tags[idx] <= tag; valid[idx] <= 1'b1;
                           state <= S_REREAD;
                       end
             default:  state <= S_IDLE;  // S_REREAD: RAM re-reads the new line this cycle

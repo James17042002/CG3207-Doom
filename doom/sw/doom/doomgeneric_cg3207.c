@@ -48,8 +48,14 @@ static void update_palette(void) {
 
 void DG_DrawFrame(void) {
     static int first = 1;
+    static uint16_t xmap[OLED_W];
+    if (first) {
+        // Draw straight from Doom's screen buffer (i_video.c skips its copy when they are equal)
+        DG_ScreenBuffer = (pixel_t *)I_VideoBuffer;
+        for (int x = 0; x < OLED_W; x++) xmap[x] = (uint16_t)((x * 320) / OLED_W);
+    }
     if (palette_changed || first) { update_palette(); palette_changed = 0; first = 0; }
-    const uint8_t *src = (const uint8_t *)DG_ScreenBuffer;
+    const uint8_t *src = I_VideoBuffer;
     uint32_t sw = DIPS;
     int src_h = (sw & 0x4) ? 168 : 200;   // 168 = view without the 32-pixel status bar
     int smooth = sw & 0x8;
@@ -57,23 +63,22 @@ void DG_DrawFrame(void) {
     OLED_CTRL = 0x14;
     OLED_ROW = 0;
     OLED_COL = 0;
-    for (int y = 0; y < OLED_H; y++) {
-        int sy = (y * src_h) / OLED_H;
+    volatile uint32_t *oled = &OLED_DATA;
+    for (int y = 0, acc = 0; y < OLED_H; y++, acc += src_h) {
+        int sy = acc / OLED_H;
         const uint8_t *row = src + sy * 320;
-        const uint8_t *row2 = src + (sy + 1 < src_h ? sy + 1 : sy) * 320;
-        for (int x = 0; x < OLED_W; x++) {
-            int sx = (x * 320) / OLED_W;
-            uint32_t px;
-            if (smooth) {
+        if (!smooth) {
+            for (int x = 0; x < OLED_W; x++) *oled = pal565[row[xmap[x]]];
+        } else {
+            const uint8_t *row2 = src + (sy + 1 < src_h ? sy + 1 : sy) * 320;
+            for (int x = 0; x < OLED_W; x++) {
+                int sx = xmap[x];
                 uint8_t a = row[sx], b = row[sx + 1], c = row2[sx], d = row2[sx + 1];
                 uint32_t r = (palR[a] + palR[b] + palR[c] + palR[d]) >> 2;
                 uint32_t g = (palG[a] + palG[b] + palG[c] + palG[d]) >> 2;
                 uint32_t bl = (palB[a] + palB[b] + palB[c] + palB[d]) >> 2;
-                px = ((r >> 3) << 11) | ((g >> 2) << 5) | (bl >> 3);
-            } else {
-                px = pal565[row[sx]];
+                *oled = ((r >> 3) << 11) | ((g >> 2) << 5) | (bl >> 3);
             }
-            OLED_DATA = px;
         }
     }
     static uint32_t frames = 0, t0 = 0;

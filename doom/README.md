@@ -7,11 +7,11 @@ tested in simulation; the steps that need Vivado and the board are listed in
 
 ```
             +---------------------------- soc.v -----------------------------+
- buttons -->|  rv_core (RV.v + global stall)                                 |
+ buttons -->|  rv_core (RV.v + global stall, DSP multiplier)                 |
  switches   |    |  instruction port          |  data port                   |
  UART <---->|    v                            v                              |
  OLED  <----|  boot RAM 16 KB (bootloader)   boot RAM / D-cache / mmio       |
- 7-seg <----|  I-cache 16 KB ----+    +---- D-cache 16 KB (write-back)       |
+ 7-seg <----|  I-cache 64 KB ----+    +---- D-cache 64 KB (write-back)       |
             |                    v    v                                      |
             |               mem_bridge (arbiter + clock crossing)            |
             +-----------------------------|----------------------------------+
@@ -24,6 +24,7 @@ tested in simulation; the steps that need Vivado and the board are listed in
 | Path | What |
 |---|---|
 | `rtl/rv_core.v` | The course pipeline (from `RV.v`) with synchronous memories and a whole-pipeline stall for cache misses |
+| `rtl/muldiv.v` | Multiply in 4 cycles on DSP blocks; divide still uses the course `MCycle.v` |
 | `rtl/soc.v` | Memory map, boot RAM, caches, bridge, peripherals |
 | `rtl/icache.v`, `rtl/dcache.v` | Direct-mapped caches, 16-byte lines (D-cache is write-back, write-allocate) |
 | `rtl/mem_bridge.v` | Arbiter + clock-domain crossing to the MIG native user interface |
@@ -47,6 +48,21 @@ Memory map:
 | `0xC000_0000` | Same DDR2, uncached (the bootloader writes through this) |
 | `0x8400_0000` | WAD header (`'WADL'`, size); WAD data at `0x8400_0010` |
 | `0xFFFF_0000` | Peripherals: offsets as in `Wrapper.v`, plus `0xA4` ms timer, `0xA8` µs timer, `0xAC` DDR ready. See `rtl/mmio.v`. |
+
+## Status
+
+Verified in simulation (Verilator, full SoC with a model of the DDR2 controller):
+
+- riscv-tests rv32ui + rv32um: 48/48 pass on the course core and on the SoC (from DDR2, through both caches).
+- `memtest` passes; the bootloader loads and runs a program sent over the UART.
+- Doom (Freedoom) boots in about 230 M cycles (≈4.6 s at 50 MHz) and runs E1M1 at about
+  **3.2 M cycles per frame: ≈15 frames/s at 50 MHz**, ≈19 at 62.5 MHz. Holding BTNU walks the
+  player forward. Simulated OLED output is in `doom/docs/` (`sim_title.png`, `sim_e1m1.png`, `sim_walk.png`).
+- Pressing CPU reset in the middle of DDR2 traffic is handled (tested with `+reset_at`).
+
+Not yet done (needs Vivado and the board): synthesis/timing in Vivado, MIG generation, and the
+board itself. The design synthesises in Yosys (about 3.8k LUTs + 2.4k LUTs as memory, 2.1k FFs,
+39 BRAM36, 4 DSP48).
 
 ## Bring-up on the board
 
@@ -112,11 +128,14 @@ selects menu items, flipping SW0 opens/closes the menu (Escape), flipping SW1 is
 switches). SW2 up crops the status bar so the view fills the screen; SW3 up enables smoother
 downscaling. The 7-segment display shows frames per second (right two digits).
 
+SW4 up when Doom starts skips the title screen and menus and drops you straight into E1M1.
+
 Controls in the terminal: arrows or WASD, F (fire), Space or E (use), Enter, Esc or Q (menu),
 Y/N, 1–7 (weapons), Tab (map).
 
 **Re-running without reloading:** with SW15 up, the bootloader skips loading and jumps straight
-to the program already in DDR2 when you press CPU RESET.
+to the program already in DDR2 when you press CPU RESET. Use this for debugging only: a program's
+initialised data in DDR2 may have been changed by its previous run, so reload to be safe.
 
 ## If the MIG step fails
 
@@ -160,6 +179,8 @@ All of this runs on Linux (or WSL). Tools: `apt install iverilog verilator gcc-r
 | `doom/sw/boot/build.sh` | Rebuild the bootloader (`sw/boot/boot.mem`, used by synthesis) |
 | `doom/sw/doom/build.sh` | Build Doom (`sw/build/doom.elf`) |
 | `doom/sim/run.sh [-v] BOOT.mem DDR.mem +plusargs` | Simulate the SoC (`-v` = Verilator) |
+| `doom/sim/lint/lint.sh` | Verilator lint of the whole board design |
+| `doom/tools/pcprof.sh LOG ELF` | Function profile from a simulation run with `+pc_every=N` |
 
 Example: run Doom in simulation and save the OLED frames as images:
 
@@ -184,5 +205,9 @@ UART loader. See the top of `sim/tb_soc.v` for all plusargs.
   fine. The I-cache is not coherent with stores either (no self-modifying code).
 - **Not supported:** misaligned loads/stores (GCC does not generate them), interrupts, CSRs,
   `fence.i`. Doom has no sound and cannot save games or settings.
+- **Performance.** In Doom gameplay about 15% of cycles are D-cache miss stalls, 6% taken-branch
+  bubbles (branches resolve in Execute, no prediction), 5% multiply/divide. The rest is useful work.
+  Next steps if you want more speed: a faster clock, branch prediction, 32-byte cache lines, or a
+  shorter miss path in `mem_bridge.v`.
 - **Clocking.** CPU and peripherals share one clock from the MMCM; the MIG runs on its own
   `ui_clk`. The only crossing is in `mem_bridge.v`, constrained in `doom.xdc`.

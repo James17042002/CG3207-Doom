@@ -3,7 +3,7 @@
 Read this first when resuming work. Newest entries at the top.
 
 ## Status
-Current milestone: **7 — Doom in simulation** (milestones 2-6 done in simulation; board steps pending)
+Current milestone: **8 — Doom on the board**. Everything up to Doom in simulation is done; next is Vivado + hardware (see doom/README.md, 'Bring-up on the board').
 
 ## How to build and simulate
 - Tools (Ubuntu): `apt-get install iverilog verilator gcc-riscv64-unknown-elf picolibc-riscv64-unknown-elf`
@@ -15,6 +15,12 @@ Current milestone: **7 — Doom in simulation** (milestones 2-6 done in simulati
   To use a program on the board, copy the .mem files over `AA_IROM.mem` / `AA_DMEM.mem`.
 
 ## Log
+### 2026-10-29 — Doom runs in simulation; performance work
+- Doom (Freedoom E1M1) renders correctly in Verilator; input works (BTNU walks forward).
+- Speed-ups: WAD read straight from memory (stdio was byte-by-byte), no per-frame screen copy,
+  no per-pixel division in the OLED downscale, DSP multiplier (`rtl/muldiv.v`, 4 cycles), caches
+  16 KB -> 64 KB with metadata in distributed RAM. 5.1 M -> 3.2 M cycles per frame (≈15 fps @ 50 MHz).
+- mem_bridge: CPU reset during an in-flight DDR2 transaction no longer mis-acknowledges the next one.
 ### 2026-10-28 — SoC, bootloader, Doom port (milestones 2-6, simulation)
 - New SoC in `doom/rtl` (see `doom/README.md`): rv_core with whole-pipeline stall, boot RAM,
   16 KB I/D caches, MIG bridge with clock crossing, MMIO (UART FIFOs, timers, OLED, LEDs...).
